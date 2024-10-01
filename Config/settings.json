@@ -1,0 +1,22 @@
+{
+  "dates": {
+    "date_init": "2008-01-01",
+    "start_predictions": "2010-01-01",
+    "end_predictions": "2010-01-01"
+  },
+  "DataEngineer": {
+    "execute": false
+  },
+  "FeatureEngineer": {
+    "execute": false
+  },
+  "DataScientist": {
+    "execute": false
+  },
+  "MLOps": {
+    "execute": false
+  },
+  "Evaluator": {
+    "execute": false
+  }
+}
