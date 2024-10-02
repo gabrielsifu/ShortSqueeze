@@ -175,7 +175,7 @@ class FeatureEngineer:
     def truncate_values(series):
         return series.clip(lower=-1, upper=1)
 
-    def normalize(self):
+    def normalize(self):  # TODO: Deal with performance warnings
         data_train = self.xy_train.copy()
         data_test = self.xy_test.copy()
 
@@ -237,13 +237,7 @@ class FeatureEngineer:
         joblib.dump(self.xy_train, 'xy_train.joblib')
         joblib.dump(self.xy_test, 'xy_test.joblib')
         joblib.dump(self.stats_dict, 'stats_dict.joblib')
-
+        # TODO: Why nan?
         self.xy_train = joblib.load('xy_train.joblib')
         self.xy_test = joblib.load('xy_test.joblib')
         self.stats_dict = joblib.load('stats_dict.joblib')
-
-        # TODO: Implement a way to read csv
-
-
-
-
