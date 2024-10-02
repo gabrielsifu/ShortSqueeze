@@ -14,7 +14,7 @@ if __name__ == '__main__':
 
     # Create Features, Normalize, Divide Periods
     fe = FeatureEngineer(sett)
-    fe.generate_features()
+    fe.feature_engineering()
 
     # Select Features
     fs = FeatureSelector(sett)
@@ -29,9 +29,12 @@ if __name__ == '__main__':
     mlo.predict()
 
     # Evaluator
-    e = Evaluator
+    e = Evaluator(sett)
     e.evaluate()
 
+# Terça - Produzir features
+# Quarta - Selecionar Features
+# Quinta - Fit/Predict Modelos
 
 
 

@@ -20,7 +20,8 @@ class DataEngineer:
         concept_ref = pd.read_csv('./data/raw_data/CONCEPT_REF.csv')
         indicator_ref = pd.read_csv('./data/raw_data/INDICATOR_REF.csv')
         borrowrates = pd.read_csv('./data/raw_data/BORROWRATES.csv')
-        concept = pd.read_csv('./data/raw_data/CONCEPT.csv')
+        concept = pd.read_csv('./data/raw_data/CONCEPT.csv',
+                              names=['CONCEPT_ID', 'TRADINGITEM_ID', 'DATE_REF', 'CONCEPT_VALUE'])
         indicator = pd.read_csv('./data/raw_data/INDICATOR.csv')
         marketdata = pd.read_csv('./data/raw_data/MARKETDATA.csv')
         tradingitem = pd.read_csv('./data/raw_data/TRADINGITEM.csv')
