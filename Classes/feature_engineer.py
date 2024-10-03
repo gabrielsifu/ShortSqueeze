@@ -139,8 +139,8 @@ class FeatureEngineer:
         data.fillna(grouped_median, inplace=True)
         data = data.loc[:, data.std() > 0]
         data.fillna(0, inplace=True)
-        data['y'] = (data['LogReturns'] > 0.1).astype(int)
-        data.iloc[:, :-1] = data.iloc[:, :-1].shift(-2)
+        data['y'] = (data['LogReturns'] > self.sett.FeatureEngineer.short_squeeze_threshold).astype(int)
+        data.iloc[:, :-1] = data.iloc[:, :-1].shift(-self.sett.FeatureEngineer.delay_x)
         data.dropna(how='any', inplace=True)
         self.data = data
         print("End")
@@ -167,7 +167,7 @@ class FeatureEngineer:
 
     def split_periods(self):
         print("split_periods")
-        first_test_year = 2015  # TODO: Settings
+        first_test_year = self.sett.FeatureEngineer.first_test_year
         self.xy_train, self.xy_test = self.create_expanding_windows(self.data, first_test_year)
         print("End")
 
@@ -202,12 +202,13 @@ class FeatureEngineer:
                     df_test_processed[col] = df_test['y']
                     continue
                 # Calculate 1st and 99th percentiles for the training set
-                p1 = np.percentile(df_train[col], 1)  # TODO: Settings
-                p99 = np.percentile(df_train[col], 99)  # TODO: Settings
+                lower_bound = np.percentile(df_train[col], self.sett.FeatureEngineer.winsorize_lower)
+                upper_bound = np.percentile(df_train[col], self.sett.FeatureEngineer.winsorize_upper)
 
-                # Winsorization: clip values below p1 to p1, and values above p99 to p99
-                winsorized_train = np.clip(df_train[col], p1, p99)
-                winsorized_test = np.clip(df_test[col], p1, p99)
+                # Winsorization: clip values below lower_bound to lower_bound,
+                # and values above upper_bound to upper_bound
+                winsorized_train = np.clip(df_train[col], lower_bound, upper_bound)
+                winsorized_test = np.clip(df_test[col], lower_bound, upper_bound)
 
                 # Calculate the mean and standard deviation for the training set after winsorization
                 mean = winsorized_train.mean()
@@ -230,7 +231,7 @@ class FeatureEngineer:
                 df_test_processed[col] = truncated_test
 
                 # Store the statistics for the current column
-                stats.loc[col] = [p1, p99, mean, std]
+                stats.loc[col] = [lower_bound, upper_bound, mean, std]
 
             # Store the processed DataFrames and statistics
             processed_train[key] = df_train_processed

@@ -31,14 +31,15 @@ class FeatureSelector:
         x = df_train.drop(columns=['y'])
         y = df_train['y']
         clf = RandomForestClassifier(
-            n_estimators=10,  # TODO: Change to 100
-            criterion='entropy',
-            max_depth=10,
-            min_samples_leaf=0.01,
-            max_features='sqrt',
-            n_jobs=-1,
-            verbose=0,
-            random_state=42)
+            n_estimators=self.sett.FeatureSelector.forest.n_estimators,
+            criterion=self.sett.FeatureSelector.forest.criterion,
+            max_depth=self.sett.FeatureSelector.forest.max_depth,
+            min_samples_leaf=self.sett.FeatureSelector.forest.min_samples_leaf,
+            max_features=self.sett.FeatureSelector.forest.max_features,
+            n_jobs=self.sett.FeatureSelector.forest.n_jobs,
+            verbose=self.sett.FeatureSelector.forest.verbose,
+            random_state=self.sett.FeatureSelector.forest.random_state
+        )
         clf.fit(x, y)
         importances = clf.feature_importances_
         self.feature_importances_ = pd.Series(importances, index=x.columns)
@@ -55,7 +56,7 @@ class FeatureSelector:
         upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
         to_drop = set()
         for column in upper.columns:
-            correlated_features = upper.index[upper[column] >= 0.9].tolist()
+            correlated_features = upper.index[upper[column] >= self.sett.FeatureSelector.correlation_threshold].tolist()
             for row in correlated_features:
                 imp_col = self.feature_importances_[column]
                 imp_row = self.feature_importances_[row]
@@ -77,16 +78,30 @@ class FeatureSelector:
 
     def drop_lower_importance(self):
         print("Dropping less important features based on the first dataset...")
+
         # Use only the first key to determine less important features
         keys_list = list(self.xy_train.keys())
         first_key = keys_list[0]
         df_train = self.xy_train[first_key]
         x_columns = df_train.drop(columns=['y']).columns
+        # Get the feature importances and normalize them
         importances = self.feature_importances_.reindex(x_columns)
         importances = importances / importances.sum()
-        percentile_10 = importances.quantile(0.1)  # TODO: Parametrize on settings
-        low_importance_features = importances[importances <= percentile_10].index.tolist()
-        print(f"Dropping features: {low_importance_features}")
+        # Calculate the quantile threshold
+        percentile = importances.quantile(self.sett.FeatureSelector.lower_importance_quantile_threashold)
+        # Calculate mean and standard deviation for the importance values
+        mean_importance = importances.mean()
+        std_importance = importances.std()
+        # Calculate the threshold for the third standard deviation
+        std_threshold = mean_importance - self.sett.FeatureSelector.lower_importance_std_threashold * std_importance
+        # Get features below the quantile threshold
+        low_importance_quantile_features = importances[importances <= percentile].index.tolist()
+        # Get features below the third standard deviation threshold
+        low_importance_std_features = importances[importances <= std_threshold].index.tolist()
+        # Combine both sets of low importance features
+        low_importance_features = list(set(low_importance_quantile_features + low_importance_std_features))
+        print(f"Dropping features below quantile threshold {round(percentile, 4)} "
+              f"and third standard deviation {round(std_threshold, 4)}: {low_importance_features}")
         # Drop the features from all datasets
         for key in self.xy_train:
             df_train = self.xy_train[key]

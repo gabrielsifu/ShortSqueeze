@@ -55,8 +55,9 @@ class DataEngineer:
         all_wide.columns = ['{}/{}'.format(col[0], col[1])
                             if isinstance(col, tuple)
                             else col for col in all_wide.columns]
-        all_wide = all_wide.sample(frac=0.01)  # TODO: Remove
-        all_wide = all_wide.sort_index()  # TODO: Remove
+        if self.sett.DataEngineer.reduce:
+            all_wide = all_wide.sample(frac=self.sett.DataEngineer.reduce)
+            all_wide = all_wide.sort_index()
         self.data = all_wide
 
     def fill_nan(self):

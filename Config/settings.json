@@ -5,10 +5,32 @@
     "end_predictions": "2010-01-01"
   },
   "DataEngineer": {
-    "execute": false
+    "execute": false,
+    "sample": 0
   },
   "FeatureEngineer": {
-    "execute": false
+    "execute": false,
+    "short_squeeze_threshold":0.1,
+    "delay_x": 2,
+    "first_test_year": 2015,
+    "winsorize_lower": 1,
+    "winsorize_upper": 99
+  },
+  "FeatureSelector": {
+    "execute": false,
+    "correlation_threshold": 0.9,
+    "lower_importance_quantile_threashold": 0.1,
+    "lower_importance_std_threashold": 3,
+    "forest": {
+      "n_estimators": 10,
+      "criterion": "entropy",
+      "max_depth": 10,
+      "min_samples_leaf": 0.01,
+      "max_features": "sqrt",
+      "n_jobs": -1,
+      "verbose": 0,
+      "random_state": 42
+    }
   },
   "DataScientist": {
     "execute": false
