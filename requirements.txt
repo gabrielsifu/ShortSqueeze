@@ -1,3 +1,6 @@
-dynaconf
-pandas
-numpy
+dynaconf~=3.2.6
+pandas~=2.2.3
+numpy<2
+joblib~=1.4.2
+scikit-learn~=1.5.2
+tensorflow

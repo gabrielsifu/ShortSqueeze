@@ -32,14 +32,3 @@ if __name__ == '__main__':
     e = Evaluator(sett)
     e.evaluate()
 
-# Terça - Produzir features
-# Quarta - Selecionar Features
-# Quinta - Fit/Predict Modelos
-
-
-
-
-
-
-
-

@@ -141,7 +141,7 @@ class FeatureEngineer:
         data.fillna(0, inplace=True)
         data['y'] = (data['LogReturns'] > 0.1).astype(int)
         data.iloc[:, :-1] = data.iloc[:, :-1].shift(-2)
-        data.dropna(inplace=True)
+        data.dropna(how='any', inplace=True)
         self.data = data
         print("End")
 
@@ -193,25 +193,33 @@ class FeatureEngineer:
             df_test_processed = pd.DataFrame(index=df_test.index)
 
             # DataFrame to store statistics
-            stats = pd.DataFrame(columns=['Percentile 5', 'Percentile 95', 'Mean', 'Standard Deviation'])
+            stats = pd.DataFrame(columns=['Percentile 1', 'Percentile 99', 'Mean', 'Standard Deviation'])
 
             # Iterate over each column (variable) in the DataFrame
             for col in df_train.columns:
-                # Calculate 5th and 95th percentiles for the training set
-                p5 = np.percentile(df_train[col], 5)  # TODO: Settings
-                p95 = np.percentile(df_train[col], 95)  # TODO: Settings
+                if col == 'y':
+                    df_train_processed[col] = df_train['y']
+                    df_test_processed[col] = df_test['y']
+                    continue
+                # Calculate 1st and 99th percentiles for the training set
+                p1 = np.percentile(df_train[col], 1)  # TODO: Settings
+                p99 = np.percentile(df_train[col], 99)  # TODO: Settings
 
-                # Winsorization: clip values below p5 to p5, and values above p95 to p95
-                winsorized_train = np.clip(df_train[col], p5, p95)
-                winsorized_test = np.clip(df_test[col], p5, p95)
+                # Winsorization: clip values below p1 to p1, and values above p99 to p99
+                winsorized_train = np.clip(df_train[col], p1, p99)
+                winsorized_test = np.clip(df_test[col], p1, p99)
 
                 # Calculate the mean and standard deviation for the training set after winsorization
                 mean = winsorized_train.mean()
                 std = winsorized_train.std()
 
-                # Normalize: subtract the mean and divide by three times the standard deviation
-                normalized_train = (winsorized_train - mean) / (3 * std)
-                normalized_test = (winsorized_test - mean) / (3 * std)
+                if std == 0:
+                    normalized_train = (winsorized_train - mean)
+                    normalized_test = (winsorized_test - mean)
+                else:
+                    # Normalize: subtract the mean and divide by three times the standard deviation
+                    normalized_train = (winsorized_train - mean) / (3 * std)
+                    normalized_test = (winsorized_test - mean) / (3 * std)
 
                 # Truncate values between -1 and 1
                 truncated_train = self.truncate_values(normalized_train)
@@ -222,7 +230,7 @@ class FeatureEngineer:
                 df_test_processed[col] = truncated_test
 
                 # Store the statistics for the current column
-                stats.loc[col] = [p5, p95, mean, std]
+                stats.loc[col] = [p1, p99, mean, std]
 
             # Store the processed DataFrames and statistics
             processed_train[key] = df_train_processed
@@ -234,10 +242,7 @@ class FeatureEngineer:
         self.stats_dict = stats_dict
 
     def save(self):
-        joblib.dump(self.xy_train, 'xy_train.joblib')
-        joblib.dump(self.xy_test, 'xy_test.joblib')
-        joblib.dump(self.stats_dict, 'stats_dict.joblib')
+        joblib.dump(self.xy_train, './data/xy_full/xy_train.joblib')
+        joblib.dump(self.xy_test, './data/xy_full/xy_test.joblib')
+        joblib.dump(self.stats_dict, './data/xy_full/stats_dict.joblib')
         # TODO: Why nan?
-        self.xy_train = joblib.load('xy_train.joblib')
-        self.xy_test = joblib.load('xy_test.joblib')
-        self.stats_dict = joblib.load('stats_dict.joblib')
