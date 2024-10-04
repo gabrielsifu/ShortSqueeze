@@ -55,8 +55,8 @@ class DataEngineer:
         all_wide.columns = ['{}/{}'.format(col[0], col[1])
                             if isinstance(col, tuple)
                             else col for col in all_wide.columns]
-        if self.sett.DataEngineer.reduce:
-            all_wide = all_wide.sample(frac=self.sett.DataEngineer.reduce)
+        if self.sett.DataEngineer.sample:
+            all_wide = all_wide.sample(frac=self.sett.DataEngineer.sample)
             all_wide = all_wide.sort_index()
         self.data = all_wide
 
