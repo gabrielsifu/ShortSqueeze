@@ -148,8 +148,8 @@ class FeatureEngineer:
     @staticmethod
     def create_expanding_windows(df, first_test_year):
         # Assuming the index is a MultiIndex, adjust if necessary
-        start_year = df.index[0][0].year
-        last_year = df.index[-1][0].year
+        start_year = df.index.min()[0].year
+        last_year = df.index.max()[0].year
         train_windows = {}
         test_windows = {}
         # Iterate from the start year to the last available year in the DataFrame
