@@ -74,7 +74,15 @@ class DataEngineer:
                           'TAKER_MEAN/BALCAO', 'TAKER_MEAN/Eletronico D+0', 'TAKER_MEAN/Eletronico D+1',
                           'TAKER_MAX/BALCAO', 'TAKER_MAX/Eletronico D+0', 'TAKER_MAX/Eletronico D+1']
         df.loc[:, zero_fill_cols] = df.loc[:, zero_fill_cols].fillna(0)
-        df = df[(df['VOLUME/BALCAO'] + df['VOLUME/Eletronico D+0'] + df['VOLUME/Eletronico D+1']) != 0]
+        df['VolumeAluguel'] = df['VOLUME/BALCAO'] + df['VOLUME/Eletronico D+0'] + df['VOLUME/Eletronico D+1']
+        df['VolumeAluguel'] = df.groupby(level=['TRADINGITEM_ID']).rolling(
+            21, min_periods=1).median()['VolumeAluguel'].reset_index(level=0, drop=True)
+        df = df[df['VolumeAluguel'] > 0]
+        df['Volume'] = df.groupby(level=['TRADINGITEM_ID']).rolling(
+            21, min_periods=1).median()['ASSETS_TRADED'].reset_index(level=0, drop=True)
+        df = df[df['Volume'] > 0]
+        df.drop(['VolumeAluguel', 'Volume'], axis=1, inplace=True)
+
         forward_fill_cols = df.columns
         df = df.groupby(level='TRADINGITEM_ID')[forward_fill_cols].ffill()
         grouped_median = df.groupby(level='DATE_REF').median().ffill()

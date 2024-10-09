@@ -6,7 +6,7 @@
   },
   "DataEngineer": {
     "execute": false,
-    "sample": 0
+    "sample": 0.01
   },
   "FeatureEngineer": {
     "execute": false,
