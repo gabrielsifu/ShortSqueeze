@@ -109,6 +109,7 @@ class FeatureEngineer:
     def generate_features(self):
         print("generate_features")
         data = self.data.copy()
+        data['Spread'] = (data['PRICE_BID']-data['PRICE_ASK'])/data['PRICE_MID']
         data['ContratosAluguel'] = data[
             ['CONTRACT_COUNT/BALCAO', 'CONTRACT_COUNT/Eletronico D+0', 'CONTRACT_COUNT/Eletronico D+1']].sum(axis=1)
         data['SharesAluguel'] = data[
@@ -121,6 +122,7 @@ class FeatureEngineer:
         data = self.calculate_rolling(
             data, [
                 'LogReturns', 'VolumeTraded',
+                'Spread',
                 'ContratosAluguel', 'SharesAluguel', 'PctSharesAluguel', 'PctSharesAluguelNet', 'VolumeAluguel',
                 'DONOR_MIN/BALCAO', 'DONOR_MIN/Eletronico D+0', 'DONOR_MIN/Eletronico D+1',
                 'DONOR_MEAN/BALCAO', 'DONOR_MEAN/Eletronico D+0', 'DONOR_MEAN/Eletronico D+1',

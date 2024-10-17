@@ -6,7 +6,7 @@
   },
   "DataEngineer": {
     "execute": false,
-    "sample": 0.01
+    "sample": 0
   },
   "FeatureEngineer": {
     "execute": false,
@@ -22,7 +22,7 @@
     "lower_importance_quantile_threashold": 0.1,
     "lower_importance_std_threashold": 3,
     "forest": {
-      "n_estimators": 10,
+      "n_estimators": 100,
       "criterion": "entropy",
       "max_depth": 10,
       "min_samples_leaf": 0.01,
@@ -39,6 +39,6 @@
     "execute": false
   },
   "Evaluator": {
-    "execute": false
+    "execute": true
   }
 }

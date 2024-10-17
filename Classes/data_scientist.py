@@ -1,5 +1,7 @@
 import joblib
 import os
+import numpy as np
+from sklearn.utils import class_weight
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
@@ -31,10 +33,19 @@ class DataScientist:
             x_new = x.loc[new_indices]
             y_new = y.loc[new_indices]
 
+            # Compute class weights to balance the classes
+            unique_classes = np.unique(y_new)
+            class_weights = class_weight.compute_class_weight(
+                class_weight='balanced',
+                classes=unique_classes,
+                y=y_new
+            )
+            class_weight_dict = dict(zip(unique_classes, class_weights))
+
             # EarlyStopping callback
             early_stopping = EarlyStopping(
                 monitor='val_loss',
-                patience=3,
+                patience=5,
                 restore_best_weights=True
             )
 
@@ -48,14 +59,15 @@ class DataScientist:
             else:
                 model = previous_model
 
-            # Train the model with early stopping
+            # Train the model with early stopping and class weights
             model.fit(
                 x_new,
                 y_new,
-                epochs=10,
-                batch_size=128,
+                epochs=20,
+                batch_size=10000,
                 validation_split=0.2,
                 callbacks=[early_stopping],
+                class_weight=class_weight_dict,
                 verbose=1
             )
 
