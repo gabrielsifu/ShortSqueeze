@@ -63,7 +63,7 @@ class DataScientist:
             model.fit(
                 x_new,
                 y_new,
-                epochs=20,
+                epochs=10,
                 batch_size=10000,
                 validation_split=0.2,
                 callbacks=[early_stopping],
