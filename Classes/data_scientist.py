@@ -2,6 +2,7 @@ import joblib
 import os
 import numpy as np
 from sklearn.utils import class_weight
+from sklearn.linear_model import LogisticRegression
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
@@ -49,18 +50,19 @@ class DataScientist:
                 restore_best_weights=True
             )
 
+            # Neural Network Model
             if previous_model is None:
                 # Define a new model
-                model = Sequential()
-                model.add(Dense(128, activation='relu', input_shape=(x_new.shape[1],)))
-                model.add(Dense(128, activation='relu'))
-                model.add(Dense(1, activation='sigmoid'))
-                model.compile(optimizer='adam', loss='binary_crossentropy', metrics=[tf.keras.metrics.AUC()])
+                model_nn = Sequential()
+                model_nn.add(Dense(128, activation='relu', input_shape=(x_new.shape[1],)))
+                model_nn.add(Dense(128, activation='relu'))
+                model_nn.add(Dense(1, activation='sigmoid'))
+                model_nn.compile(optimizer='adam', loss='binary_crossentropy', metrics=[tf.keras.metrics.AUC()])
             else:
-                model = previous_model
+                model_nn = previous_model
 
-            # Train the model with early stopping and class weights
-            model.fit(
+            # Train the neural network model with early stopping and class weights
+            model_nn.fit(
                 x_new,
                 y_new,
                 epochs=10,
@@ -71,13 +73,32 @@ class DataScientist:
                 verbose=1
             )
 
-            # Save the model with the corresponding key
-            self.models[key] = model
-            previous_model = model
+            # Logistic Regression Model without class weights
+            model_lr = LogisticRegression(max_iter=10000)
+            model_lr.fit(x, y)
+
+            # Logistic Regression Model with balanced class weights
+            model_lr_balanced = LogisticRegression(class_weight='balanced', max_iter=10000)
+            model_lr_balanced.fit(x, y)
+
+            # Save the models with the corresponding key
+            self.models[key] = {
+                'neural_network': model_nn,
+                'logistic_regression': model_lr,
+                'logistic_regression_balanced': model_lr_balanced
+            }
+            previous_model = model_nn
 
         # Save all models to the specified directory
         if not os.path.exists('./data/models/'):
             os.makedirs('./data/models/')
 
-        for key, model in self.models.items():
-            model.save(f'./data/models/model_{key}.keras')
+        for key, model_dict in self.models.items():
+            # Save neural network model
+            model_dict['neural_network'].save(f'./data/models/model_nn_{key}.keras')
+
+            # Save logistic regression model without class weights
+            joblib.dump(model_dict['logistic_regression'], f'./data/models/model_lr_{key}.joblib')
+
+            # Save logistic regression model with balanced class weights
+            joblib.dump(model_dict['logistic_regression_balanced'], f'./data/models/model_lr_balanced_{key}.joblib')

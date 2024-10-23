@@ -13,10 +13,26 @@ class MLOps:
         # Load all models from the specified directory
         model_dir = './data/models/'
         for filename in os.listdir(model_dir):
+            # Extract the key (date) and model type from the filename
             if filename.endswith('.keras'):
-                # Extract the key (date) from the filename
-                key = filename.replace('model_', '').replace('.keras', '')
-                self.models[key] = load_model(os.path.join(model_dir, filename))
+                # Neural Network Model
+                if filename.startswith('model_nn_'):
+                    key = filename.replace('model_nn_', '').replace('.keras', '')
+                    if key not in self.models:
+                        self.models[key] = {}
+                    self.models[key]['neural_network'] = load_model(os.path.join(model_dir, filename))
+            elif filename.endswith('.joblib'):
+                # Logistic Regression Models
+                if filename.startswith('model_lr_balanced_'):
+                    key = filename.replace('model_lr_balanced_', '').replace('.joblib', '')
+                    if key not in self.models:
+                        self.models[key] = {}
+                    self.models[key]['logistic_regression_balanced'] = joblib.load(os.path.join(model_dir, filename))
+                elif filename.startswith('model_lr_'):
+                    key = filename.replace('model_lr_', '').replace('.joblib', '')
+                    if key not in self.models:
+                        self.models[key] = {}
+                    self.models[key]['logistic_regression'] = joblib.load(os.path.join(model_dir, filename))
 
     def predict(self):
         predictions = {}
@@ -29,23 +45,29 @@ class MLOps:
         for date_key, data in self.xy_test.items():
             # Check if there's a model for this date
             if date_key in self.models:
-                model = self.models[date_key]
+                model_dict = self.models[date_key]
 
-                # Assuming 'y' is the last column in the DataFrame
+                # Separate features and target
                 x_test = data.drop(columns=['y'])
                 y_true = data['y']
 
-                # Make predictions
-                y_pred = model.predict(x_test)
-                # Flatten y_pred in case it's in a nested array
-                y_pred = y_pred.flatten()
+                # Initialize a DataFrame to store predictions
+                predictions_df = pd.DataFrame({'y_true': y_true})
 
-                # Store predictions in a DataFrame
-                predictions[date_key] = pd.DataFrame({
-                    'y_true': y_true,
-                    'y_pred': y_pred
-                })
+                for model_name, model in model_dict.items():
+                    if model_name == 'neural_network':
+                        # Neural Network Prediction
+                        y_pred = model.predict(x_test)
+                        y_pred = y_pred.flatten()
+                    else:
+                        # Logistic Regression Prediction
+                        y_pred = model.predict_proba(x_test)[:, 1]
 
+                    # Add predictions to the DataFrame
+                    predictions_df[f'y_pred_{model_name}'] = y_pred
+
+                # Store predictions for the current date key
+                predictions[date_key] = predictions_df
             else:
                 print(f"No model found for date {date_key}. Skipping prediction for this date.")
 
