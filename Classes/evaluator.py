@@ -55,18 +55,23 @@ class Evaluator:
         loss_moving_avg = {}
 
         for loss_col in model_loss_columns:
-            loss_moving_avg[loss_col] = all_predictions_grouped[loss_col].rolling(window='30D', min_periods=15).mean()
+            loss_moving_avg[loss_col] = all_predictions_grouped[loss_col].rolling(window='360D', min_periods=180).mean()
         return loss_moving_avg
 
     def plot_moving_average_loss(self, loss_moving_avg):
         """Plot and save the moving average of loss over time for each model."""
         plt.figure(figsize=(10, 6))
         for loss_col, series in loss_moving_avg.items():
+            if loss_col == 'loss_y_pred_logistic_regression':
+                continue
             plt.plot(series.index, series.values, label=loss_col.replace('loss_y_pred_', ''))
 
-        plt.title('Moving Average of Cross-Entropy Loss Over Time (Window: 1 Month)')
-        plt.xlabel('DATE_REF')
-        plt.ylabel('Average Cross-Entropy Loss')
+        # plt.title('Moving Average of Cross-Entropy Loss Over Time (Window: 1 Year)')
+        plt.title('Média Móvel (1 ano) da Entropia Cruzada')
+        # plt.xlabel('DATE_REF')
+        plt.xlabel('Ano')
+        # plt.ylabel('Average Cross-Entropy Loss')
+        plt.ylabel('Entropia Cruzada Média')
         plt.legend()
         plt.grid(True)
 
@@ -98,15 +103,18 @@ class Evaluator:
 
             color1 = 'black'
             ax1.hist(y_pred_0, bins=50, alpha=1, label='y_true = 0', color=color1)
-            ax1.set_xlabel('Predicted Value (y_pred)')
-            ax1.set_ylabel('Frequency (y_true = 0)', color=color1)
+            # ax1.set_xlabel('Predicted Value (y_pred)')
+            ax1.set_xlabel('Valor Previsto (y_pred)')
+            # ax1.set_ylabel('Frequency (y_true = 0)', color=color1)
+            ax1.set_ylabel('Frequência (y_true = 0)', color=color1)
             ax1.tick_params(axis='y', labelcolor=color1)
 
             ax2 = ax1.twinx()
 
             color2 = 'tab:red'
             ax2.hist(y_pred_1, bins=50, alpha=0.5, label='y_true = 1', color=color2)
-            ax2.set_ylabel('Frequency (y_true = 1)', color=color2)
+            # ax2.set_ylabel('Frequency (y_true = 1)', color=color2)
+            ax2.set_ylabel('Frequência (y_true = 1)', color=color2)
             ax2.tick_params(axis='y', labelcolor=color2)
 
             # Add legends
@@ -115,7 +123,8 @@ class Evaluator:
             plt.legend(handles1 + handles2, labels1 + labels2, loc='upper right')
 
             model_name = model_col.replace('y_pred_', '')
-            plt.title(f'Predicted Values by True Label - {model_name}')
+            # plt.title(f'Predicted Values by True Label - {model_name}')
+            plt.title(f'Valores preditos pelo rótulo real - {model_name}')
             plt.tight_layout()
             plt.savefig(f'data/evaluation/predicted_values_histogram_dual_axis_{model_name}.png')
             plt.close()
@@ -171,13 +180,17 @@ class Evaluator:
 
             # Plot ROC curve
             plt.figure(figsize=(8, 6))
-            plt.plot(fpr, tpr, label=f'ROC Curve (area = {roc_auc:.2f})')
+            # plt.plot(fpr, tpr, label=f'ROC Curve (area = {roc_auc:.2f})')
+            plt.plot(fpr, tpr, label=f'Curva ROC (área = {roc_auc:.2f})')
             plt.plot([0, 1], [0, 1], linestyle='--', color='gray')
             plt.xlim([0.0, 1.0])
             plt.ylim([0.0, 1.05])
-            plt.xlabel('False Positive Rate')
-            plt.ylabel('True Positive Rate')
-            plt.title(f'Receiver Operating Characteristic (ROC) Curve - {model_name}')
+            # plt.xlabel('False Positive Rate')
+            plt.xlabel('Taxa de Falso Positivo')
+            # plt.ylabel('True Positive Rate')
+            plt.ylabel('Taxa de Verdadeiro Positivo')
+            # plt.title(f'Receiver Operating Characteristic (ROC) Curve - {model_name}')
+            plt.title(f'Curva ROC - {model_name}')
             plt.legend(loc='lower right')
             plt.grid(True)
             plt.savefig(f'data/evaluation/roc_curve_{model_name}.png')

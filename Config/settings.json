@@ -33,12 +33,12 @@
     }
   },
   "DataScientist": {
-    "execute": false
+    "execute": true
   },
   "MLOps": {
-    "execute": false
+    "execute": true
   },
   "Evaluator": {
-    "execute": false
+    "execute": true
   }
 }
