@@ -142,7 +142,8 @@ class FeatureEngineer:
         data = data.loc[:, data.std() > 0]
         data.fillna(0, inplace=True)
         data['y'] = (data['LogReturns'] > self.sett.FeatureEngineer.short_squeeze_threshold).astype(int)
-        data.iloc[:, :-1] = data.iloc[:, :-1].shift(-self.sett.FeatureEngineer.delay_x)
+        cols_to_shift = data.columns.difference(['y', 'LogReturns'])
+        data[cols_to_shift] = data[cols_to_shift].shift(-self.sett.FeatureEngineer.delay_x)
         data.dropna(how='any', inplace=True)
         self.data = data
         print("End")
@@ -199,9 +200,9 @@ class FeatureEngineer:
 
             # Iterate over each column (variable) in the DataFrame
             for col in df_train.columns:
-                if col == 'y':
-                    df_train_processed[col] = df_train['y']
-                    df_test_processed[col] = df_test['y']
+                if (col == 'y') | (col == 'LogReturns'):
+                    df_train_processed[col] = df_train[col]
+                    df_test_processed[col] = df_test[col]
                     continue
                 # Calculate 1st and 99th percentiles for the training set
                 lower_bound = np.percentile(df_train[col], self.sett.FeatureEngineer.winsorize_lower)

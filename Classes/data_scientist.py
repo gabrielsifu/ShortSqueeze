@@ -24,7 +24,7 @@ class DataScientist:
             df = self.xy_train[key]
 
             # Separate features and target
-            x = df.drop(columns=['y'])
+            x = df.drop(columns=['y', 'LogReturns'])
             y = df['y']
 
             # Get new indices not used in previous training

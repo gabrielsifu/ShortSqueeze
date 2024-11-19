@@ -48,11 +48,12 @@ class MLOps:
                 model_dict = self.models[date_key]
 
                 # Separate features and target
-                x_test = data.drop(columns=['y'])
+                x_test = data.drop(columns=['y', 'LogReturns'])
                 y_true = data['y']
+                log_returns = data['LogReturns']
 
                 # Initialize a DataFrame to store predictions
-                predictions_df = pd.DataFrame({'y_true': y_true})
+                predictions_df = pd.DataFrame({'y_true': y_true, 'log_returns': log_returns})
 
                 for model_name, model in model_dict.items():
                     if model_name == 'neural_network':

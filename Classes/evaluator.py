@@ -268,6 +268,8 @@ class Evaluator:
 
         # Compute and plot confusion matrix for each model
         self.compute_confusion_matrix(all_predictions)
+        # Plot return distribution
+        self.plot_return_distribution(all_predictions)
         # Compute ROC AUC and plot ROC curve for each model
         self.compute_roc_auc(all_predictions)
         # Compute classification metrics for each model
@@ -276,3 +278,67 @@ class Evaluator:
         self.compute_lift_curve(all_predictions)
 
         print("Evaluation completed and results saved in 'data/evaluation/' directory.")
+
+    def plot_return_distribution(self, df):
+        # Get the model names by parsing the columns
+        pred_cols = [col for col in df.columns if col.startswith('y_pred_')]
+        models = [col.replace('y_pred_', '') for col in pred_cols]
+
+        for model in models:
+            # Get the predicted labels
+            y_pred_col = 'y_pred_' + model
+
+            # Create a column for TP, TN, FP, FN labels
+            confusion_label_col = 'confusion_label_' + model
+            df[confusion_label_col] = df.apply(
+                lambda row: self.confusion_label(row['y_true'], row[y_pred_col]), axis=1)
+
+            # Arrange labels to match the desired quadrant layout
+            labels = ['TN', 'FP', 'FN', 'TP']
+
+            fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+            axes = axes.flatten()
+
+            for idx, label in enumerate(labels):
+                subset = df[df[confusion_label_col] == label]
+                data = subset['log_returns']
+                ax = axes[idx]
+                ax.hist(data, bins=30, alpha=0.7, color='skyblue', edgecolor='black')
+                ax.set_title(f'{model} - {label} ({len(data)})')
+
+                # Calculate statistics
+                mean = data.mean()
+                std = data.std()
+                median = data.median()
+                q75 = data.quantile(0.75)
+                p90 = data.quantile(0.90)
+                p95 = data.quantile(0.95)
+
+                # Plot vertical lines for statistics
+                ax.axvline(mean, color='red', linestyle='dashed', linewidth=1, label=f'Mean: {100*mean:.2f}%')
+                ax.axvline(median, color='green', linestyle='dashed', linewidth=1, label=f'Median: {100*median:.2f}%')
+                ax.axvline(q75, color='blue', linestyle='dashed', linewidth=1, label=f'75th percentile: {100*q75:.2f}%')
+                ax.axvline(p90, color='cyan', linestyle='dashed', linewidth=1, label=f'90th percentile: {100*p90:.2f}%')
+                ax.axvline(p95, color='magenta', linestyle='dashed', linewidth=1, label=f'95th percentile: {100*p95:.2f}%')
+                ax.axvline(mean, color='grey', linestyle='dashed', linewidth=0.5, label=f'Std: {100*std:.2f}%')
+
+                ax.legend()
+                ax.set_xlabel('Log Returns')
+                ax.set_ylabel('Frequency')
+
+            plt.tight_layout()
+            plt.savefig(f'data/evaluation/{model}_histograms_returns.png')
+            plt.close()
+
+    @staticmethod
+    def confusion_label(y_true, y_pred, thresh=0.5):
+        if y_true == 1 and y_pred > thresh:
+            return 'TP'
+        elif y_true == 0 and y_pred <= thresh:
+            return 'TN'
+        elif y_true == 0 and y_pred > thresh:
+            return 'FP'
+        elif y_true == 1 and y_pred <= thresh:
+            return 'FN'
+        else:
+            return 'Unknown'
