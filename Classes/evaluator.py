@@ -138,13 +138,13 @@ class Evaluator:
         for model_col in model_columns:
             # Binarize predictions based on threshold 0.5
             y_true = all_predictions['y_true']
-            y_pred_binary = (all_predictions[model_col] >= 0.5).astype(int)
+            y_pred_binary = (all_predictions[model_col] >= 0.03).astype(int)
             cm = confusion_matrix(y_true, y_pred_binary)
 
             # Save confusion matrix as a table
-            cm_df = pd.DataFrame(cm, index=['Actual 0', 'Actual 1'], columns=['Predicted 0', 'Predicted 1'])
+            # cm_df = pd.DataFrame(cm, index=['Actual 0', 'Actual 1'], columns=['Predicted 0', 'Predicted 1'])
             model_name = model_col.replace('y_pred_', '')
-            cm_df.to_csv(f'data/evaluation/confusion_matrix_{model_name}.csv')
+            # cm_df.to_csv(f'data/evaluation/confusion_matrix_{model_name}.csv')
 
             # Plot confusion matrix using matplotlib
             fig, ax = plt.subplots(figsize=(6, 4))
@@ -177,8 +177,8 @@ class Evaluator:
             model_name = model_col.replace('y_pred_', '')
 
             # Save ROC AUC value
-            with open(f'data/evaluation/roc_auc_value_{model_name}.txt', 'w') as f:
-                f.write(f'ROC AUC ({model_name}): {roc_auc}')
+            # with open(f'data/evaluation/roc_auc_value_{model_name}.txt', 'w') as f:
+            #     f.write(f'ROC AUC ({model_name}): {roc_auc}')
 
             # Plot ROC curve
             plt.figure(figsize=(8, 6))
@@ -214,11 +214,11 @@ class Evaluator:
             model_name = model_col.replace('y_pred_', '')
 
             # Save metrics to a text file
-            with open(f'data/evaluation/classification_metrics_{model_name}.txt', 'w') as f:
-                f.write(f'Precision: {precision}\n')
-                f.write(f'Recall: {recall}\n')
-                f.write(f'F1 Score: {f1}\n')
-                f.write(f'Matthews Correlation Coefficient: {mcc}\n')
+            # with open(f'data/evaluation/classification_metrics_{model_name}.txt', 'w') as f:
+            #     f.write(f'Precision: {precision}\n')
+            #     f.write(f'Recall: {recall}\n')
+            #     f.write(f'F1 Score: {f1}\n')
+            #     f.write(f'Matthews Correlation Coefficient: {mcc}\n')
 
     def compute_lift_curve(self, all_predictions):
         """Compute and plot the lift curve for each model."""
@@ -274,12 +274,13 @@ class Evaluator:
         self.plot_return_distribution(all_predictions)
         # Compute backtest
         self.compute_backtest(all_predictions)
+        self.compute_backtest2(all_predictions)
         # Compute ROC AUC and plot ROC curve for each model
         self.compute_roc_auc(all_predictions)
         # Compute classification metrics for each model
         self.compute_classification_metrics(all_predictions)
         # Compute and plot lift curve for each model
-        self.compute_lift_curve(all_predictions)
+        # self.compute_lift_curve(all_predictions)
 
         print("Evaluation completed and results saved in 'data/evaluation/' directory.")
 
@@ -383,6 +384,129 @@ class Evaluator:
                     )
 
                     # Fechar a figura para liberar memória
+                    plt.close()
+
+    def compute_backtest2(self, df):
+        results = {}
+        # Get the model names by parsing the columns
+        pred_cols = [col for col in df.columns if col.startswith('y_pred_')]
+        models = [col.replace('y_pred_', '') for col in pred_cols]
+        os.makedirs('data/backtest/', exist_ok=True)
+        for cost in [0.003, 0.007]:
+            for date in [None, 'pre_2021', 'pos_2020']:
+                for model in models:
+                    results[model] = pd.DataFrame(
+                        index=['Daily Trades', 'Mean Return', 'Std Return', 'T-Stat', 'Sharpe', 'Hit Ratio',
+                               'Hit Above Cost',
+                               'P_05', 'P_10', 'P_25', 'P_50', 'P_75', 'P_90', 'P_95', 'DailyCashProfit']
+                    )
+                    for top_N in [32, 16, 8, 4, 2, 1]:
+                        df_aux = df.copy()
+                        df_aux = df_aux.loc[:, ['DATE_REF', 'log_returns', f'y_pred_{model}']]
+                        # Apply date filters
+                        if date is None:
+                            pass
+                        elif date == 'pre_2021':
+                            df_aux = df_aux[df_aux['DATE_REF'].dt.year < 2021]
+                        elif date == 'pos_2020':
+                            df_aux = df_aux[df_aux['DATE_REF'].dt.year > 2020]
+
+                        # Sort by DATE_REF and predicted probability in descending order
+                        df_aux = df_aux.sort_values(['DATE_REF', f'y_pred_{model}'], ascending=[True, False])
+
+                        # For each date, select the top N stocks
+                        df_aux = df_aux.groupby('DATE_REF').head(top_N).reset_index(drop=True)
+
+                        if df_aux.empty:
+                            continue
+
+                        # Compute metrics
+                        unique_dates = df_aux['DATE_REF'].nunique()
+                        results[model].loc['Daily Trades', str(top_N)] = len(df_aux) / unique_dates
+                        results[model].loc['Mean Return', str(top_N)] = df_aux['log_returns'].mean() - cost
+                        results[model].loc['Std Return', str(top_N)] = df_aux['log_returns'].std()
+                        results[model].loc['T-Stat', str(top_N)] = (
+                                results[model].loc['Mean Return', str(top_N)]
+                                / results[model].loc['Std Return', str(top_N)]
+                                * np.sqrt(len(df_aux))
+                        )
+                        results[model].loc['Sharpe', str(top_N)] = (
+                                results[model].loc['Mean Return', str(top_N)]
+                                / results[model].loc['Std Return', str(top_N)]
+                                * np.sqrt(252)
+                        )
+                        results[model].loc['Hit Ratio', str(top_N)] = (
+                                (df_aux['log_returns'] > 0).sum() / len(df_aux)
+                        )
+                        results[model].loc['Hit Above Cost', str(top_N)] = (
+                                (df_aux['log_returns'] > cost).sum() / len(df_aux)
+                        )
+                        results[model].loc['P_05', str(top_N)] = np.percentile(df_aux['log_returns'], 5)
+                        results[model].loc['P_10', str(top_N)] = np.percentile(df_aux['log_returns'], 10)
+                        results[model].loc['P_25', str(top_N)] = np.percentile(df_aux['log_returns'], 25)
+                        results[model].loc['P_50', str(top_N)] = np.percentile(df_aux['log_returns'], 50)
+                        results[model].loc['P_75', str(top_N)] = np.percentile(df_aux['log_returns'], 75)
+                        results[model].loc['P_90', str(top_N)] = np.percentile(df_aux['log_returns'], 90)
+                        results[model].loc['P_95', str(top_N)] = np.percentile(df_aux['log_returns'], 95)
+                        results[model].loc['DailyCashProfit', str(top_N)] = (
+                                                                                    df_aux[
+                                                                                        'log_returns'].sum() - cost * len(
+                                                                                df_aux)
+                                                                            ) * 0.05 * 3000000 / unique_dates
+
+                    if results[model].empty:
+                        continue
+                    results[model].iloc[0, :] = results[model].iloc[0, :].round(1)
+                    results[model].iloc[1:-1, :] = results[model].iloc[1:-1, :].round(4)
+                    results[model].iloc[-1, :] = results[model].iloc[-1, :].round(2)
+
+                    # Configure the table and save as a high-resolution figure
+                    fig, ax = plt.subplots(figsize=(12, 8))
+                    ax.axis('tight')
+                    ax.axis('off')
+
+                    # Get the values
+                    values = results[model].values
+
+                    # Create a color mapping (green -> red)
+                    cmap = plt.cm.RdYlGn
+
+                    # Create the table
+                    table = ax.table(
+                        cellText=values,
+                        colLabels=results[model].columns,
+                        rowLabels=results[model].index,
+                        cellLoc='center',
+                        loc='center'
+                    )
+
+                    # Adjust the font
+                    table.auto_set_font_size(False)
+                    table.set_fontsize(10)
+                    table.auto_set_column_width(col=list(range(len(results[model].columns))))
+
+                    # Apply colors to cells with normalization by row
+                    for (i, j), cell in table.get_celld().items():
+                        if i > 0 and j >= 0:  # Ignore column headers and row index
+                            row_index = i - 1
+                            row_values = values[row_index]
+                            norm = mcolors.Normalize(vmin=np.min(row_values), vmax=np.max(row_values))
+                            value = row_values[j]
+                            color = cmap(norm(value))
+                            cell.set_facecolor((color, 0.5))
+
+                    # Set title
+                    plt.title(f'Backtest Results for {model} {date} (cost {str(cost)})', fontsize=16, pad=20)
+
+                    # Save the figure with high resolution
+                    plt.savefig(
+                        f'data/backtest2/backtest_{model}_{date}_{str(cost)}.png',
+                        format='png',
+                        dpi=300,
+                        bbox_inches='tight'
+                    )
+
+                    # Close the figure to free memory
                     plt.close()
 
     def plot_return_distribution(self, df):
