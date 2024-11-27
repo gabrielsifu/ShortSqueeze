@@ -62,8 +62,10 @@ class DataEngineer:
 
     def fill_nan(self):
         df = self.data.copy()
+        df['VolumeTraded'] = df['ASSETS_TRADED'] * df['PRICE_CLOSE']
+        df = df[~pd.to_datetime(df.index.get_level_values('DATE_REF')).weekday.isin([5, 6])]
         zero_fill_cols = ['Dividend', 'LogReturns', 'Returns', 'VolumeTraded', 'AccRet_20', 'AccRet_250_20',
-                          'DividendYield', 'Volume_252',
+                          'DividendYield', 'Volume_252', 'ASSETS_TRADED',
                           'CONTRACT_COUNT/BALCAO', 'CONTRACT_COUNT/Eletronico D+0', 'CONTRACT_COUNT/Eletronico D+1',
                           'SHARE_COUNT/BALCAO', 'SHARE_COUNT/Eletronico D+0', 'SHARE_COUNT/Eletronico D+1',
                           'VOLUME/BALCAO', 'VOLUME/Eletronico D+0', 'VOLUME/Eletronico D+1',
@@ -75,12 +77,15 @@ class DataEngineer:
                           'TAKER_MAX/BALCAO', 'TAKER_MAX/Eletronico D+0', 'TAKER_MAX/Eletronico D+1']
         df.loc[:, zero_fill_cols] = df.loc[:, zero_fill_cols].fillna(0)
         df['VolumeAluguel'] = df['VOLUME/BALCAO'] + df['VOLUME/Eletronico D+0'] + df['VOLUME/Eletronico D+1']
-        df['VolumeAluguel'] = df.groupby(level=['TRADINGITEM_ID']).rolling(
-            21, min_periods=1).median()['VolumeAluguel'].reset_index(level=0, drop=True)
-        df = df[df['VolumeAluguel'] > 0]
-        df['Volume'] = df.groupby(level=['TRADINGITEM_ID']).rolling(
-            21, min_periods=1).median()['ASSETS_TRADED'].reset_index(level=0, drop=True)
-        df = df[df['Volume'] > 0]
+
+        for period in [5, 21, 63]:
+            df['VolumeAluguel'] = df.groupby(level=['TRADINGITEM_ID']).rolling(
+                period).median()['VolumeAluguel'].reset_index(level=0, drop=True)
+            df = df[df['VolumeAluguel'] > 0]
+            df['Volume'] = df.groupby(level=['TRADINGITEM_ID']).rolling(
+                period).median()['VolumeTraded'].reset_index(level=0, drop=True)
+            df = df[df['Volume'] > 3000000]
+
         df.drop(['VolumeAluguel', 'Volume'], axis=1, inplace=True)
 
         forward_fill_cols = df.columns

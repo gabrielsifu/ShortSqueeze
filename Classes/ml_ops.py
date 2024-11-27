@@ -1,6 +1,7 @@
 import os
 import joblib
 import pandas as pd
+import numpy as np
 from tensorflow.keras.models import load_model
 
 
@@ -28,11 +29,21 @@ class MLOps:
                     if key not in self.models:
                         self.models[key] = {}
                     self.models[key]['logistic_regression_balanced'] = joblib.load(os.path.join(model_dir, filename))
-                elif filename.startswith('model_lr_'):
+                elif filename.startswith('model_lr_') and not filename.startswith('model_lr_balanced_'):
                     key = filename.replace('model_lr_', '').replace('.joblib', '')
                     if key not in self.models:
                         self.models[key] = {}
                     self.models[key]['logistic_regression'] = joblib.load(os.path.join(model_dir, filename))
+                elif filename.startswith('nn_calibrator_'):
+                    key = filename.replace('nn_calibrator_', '').replace('.joblib', '')
+                    if key not in self.models:
+                        self.models[key] = {}
+                    self.models[key]['nn_calibrator'] = joblib.load(os.path.join(model_dir, filename))
+                elif filename.startswith('lr_calibrator_'):
+                    key = filename.replace('lr_calibrator_', '').replace('.joblib', '')
+                    if key not in self.models:
+                        self.models[key] = {}
+                    self.models[key]['lr_calibrator'] = joblib.load(os.path.join(model_dir, filename))
 
     def predict(self):
         predictions = {}
@@ -53,19 +64,38 @@ class MLOps:
                 log_returns = data['LogReturns']
 
                 # Initialize a DataFrame to store predictions
-                predictions_df = pd.DataFrame({'y_true': y_true, 'log_returns': log_returns})
+                predictions_df = pd.DataFrame({
+                    'y_true': y_true,
+                    'log_returns': log_returns
+                })
 
-                for model_name, model in model_dict.items():
-                    if model_name == 'neural_network':
-                        # Neural Network Prediction
-                        y_pred = model.predict(x_test)
-                        y_pred = y_pred.flatten()
-                    else:
-                        # Logistic Regression Prediction
-                        y_pred = model.predict_proba(x_test)[:, 1]
+                # Check that all required models are available
+                required_models = ['neural_network', 'logistic_regression', 'logistic_regression_balanced', 'nn_calibrator', 'lr_calibrator']
+                missing_models = [model_name for model_name in required_models if model_name not in model_dict]
+                if missing_models:
+                    print(f"Missing models for date {date_key}: {missing_models}. Skipping prediction for this date.")
+                    continue
 
-                    # Add predictions to the DataFrame
-                    predictions_df[f'y_pred_{model_name}'] = y_pred
+                # Calibrated model
+                nn_calibrator = model_dict['nn_calibrator']
+                lr_calibrator = model_dict['lr_calibrator']
+
+                # Predict with the neural network model
+                nn_model = model_dict['neural_network']
+                nn_probs = nn_model.predict(x_test).flatten()
+                nn_probs = nn_calibrator.predict_proba(nn_probs.reshape(-1, 1))[:, 1]
+                predictions_df['y_pred_neural_network'] = nn_probs
+
+                # Predict with the balanced logistic regression model
+                lr_balanced_model = model_dict['logistic_regression_balanced']
+                lr_balanced_probs = lr_balanced_model.predict_proba(x_test)[:, 1]
+                lr_balanced_probs = lr_calibrator.predict_proba(lr_balanced_probs.reshape(-1, 1))[:, 1]
+                predictions_df['y_pred_logistic_regression_balanced'] = lr_balanced_probs
+
+                # Predict with the unbalanced logistic regression model
+                lr_model = model_dict['logistic_regression']
+                lr_probs = lr_model.predict_proba(x_test)[:, 1]
+                predictions_df['y_pred_logistic_regression'] = lr_probs
 
                 # Store predictions for the current date key
                 predictions[date_key] = predictions_df

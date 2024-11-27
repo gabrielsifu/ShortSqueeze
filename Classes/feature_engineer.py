@@ -118,10 +118,11 @@ class FeatureEngineer:
         data['PctSharesAluguelNet'] = data['SharesAluguel'] / (data['SHARES_OUTSTANDING']*data['FREE_FLOAT'])
         data['VolumeAluguel'] = data[
             ['VOLUME/BALCAO', 'VOLUME/Eletronico D+0', 'VOLUME/Eletronico D+1']].sum(axis=1)
+        data['Coverage'] = data['VolumeAluguel']/data['VolumeTraded']
 
         data = self.calculate_rolling(
             data, [
-                'LogReturns', 'VolumeTraded',
+                'LogReturns', 'VolumeTraded', 'Coverage',
                 'Spread',
                 'ContratosAluguel', 'SharesAluguel', 'PctSharesAluguel', 'PctSharesAluguelNet', 'VolumeAluguel',
                 'DONOR_MIN/BALCAO', 'DONOR_MIN/Eletronico D+0', 'DONOR_MIN/Eletronico D+1',
@@ -131,7 +132,7 @@ class FeatureEngineer:
                 'TAKER_MEAN/BALCAO', 'TAKER_MEAN/Eletronico D+0', 'TAKER_MEAN/Eletronico D+1',
                 'TAKER_MAX/BALCAO', 'TAKER_MAX/Eletronico D+0', 'TAKER_MAX/Eletronico D+1'
             ],
-            [7, 14, 30, 90, 180, 360],
+            [5, 10, 21, 63, 126, 252],
             ['mean', 'median', 'std', 'skew', 'kurt', 'max']
         )
         # TODO: Why full collumns with nan?

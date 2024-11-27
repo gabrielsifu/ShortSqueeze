@@ -4,6 +4,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib.dates as mdates
+import matplotlib.colors as mcolors
 from sklearn.metrics import (
     confusion_matrix, roc_curve, roc_auc_score,
     precision_score, recall_score, f1_score,
@@ -37,8 +38,9 @@ class Evaluator:
         for model_col in model_columns:
             loss_col = f'loss_{model_col}'
             all_predictions[loss_col] = -(
-                all_predictions['y_true'] * np.log(np.clip(all_predictions[model_col], epsilon, 1 - epsilon)) +
-                (1 - all_predictions['y_true']) * np.log(np.clip(1 - all_predictions[model_col], epsilon, 1 - epsilon))
+                    all_predictions['y_true'] * np.log(np.clip(all_predictions[model_col], epsilon, 1 - epsilon)) +
+                    (1 - all_predictions['y_true']) * np.log(
+                np.clip(1 - all_predictions[model_col], epsilon, 1 - epsilon))
             )
         return all_predictions
 
@@ -270,6 +272,8 @@ class Evaluator:
         self.compute_confusion_matrix(all_predictions)
         # Plot return distribution
         self.plot_return_distribution(all_predictions)
+        # Compute backtest
+        self.compute_backtest(all_predictions)
         # Compute ROC AUC and plot ROC curve for each model
         self.compute_roc_auc(all_predictions)
         # Compute classification metrics for each model
@@ -279,59 +283,166 @@ class Evaluator:
 
         print("Evaluation completed and results saved in 'data/evaluation/' directory.")
 
-    def plot_return_distribution(self, df):
+    def compute_backtest(self, df):
+        results = {}
         # Get the model names by parsing the columns
         pred_cols = [col for col in df.columns if col.startswith('y_pred_')]
         models = [col.replace('y_pred_', '') for col in pred_cols]
+        os.makedirs('data/backtest/', exist_ok=True)
+        for cost in [0.003, 0.007]:
+            for date in [None, 'pre_2021', 'pos_2020']:
+                for model in models:
+                    results[model] = pd.DataFrame(
+                        index=['Daily Trades', 'Mean Return', 'Std Return', 'T-Stat', 'Sharpe', 'Hit Ratio',
+                               'Hit Above Cost',
+                               'P_05', 'P_10', 'P_25', 'P_50', 'P_75', 'P_90', 'P_95', 'DailyCashProfit']
+                    )
+                    for thresh in [0, 0.005, 0.01, 0.02, 0.03, 0.04, 0.05]:
+                        df_aux = df.copy()
+                        df_aux = df_aux.loc[:, ['DATE_REF', 'log_returns', f'y_pred_{model}']]
+                        df_aux = df_aux[df_aux[f'y_pred_{model}'] >= thresh]
+                        if date is None:
+                            pass
+                        elif date == 'pre_2021':
+                            df_aux = df_aux[df_aux['DATE_REF'].dt.year < 2021]
+                        elif date == 'pos_2020':
+                            df_aux = df_aux[df_aux['DATE_REF'].dt.year > 2020]
 
-        for model in models:
-            # Get the predicted labels
-            y_pred_col = 'y_pred_' + model
+                        if df_aux.empty:
+                            continue
+                        results[model].loc['Daily Trades', str(thresh)] = len(df_aux) / len(set(df['DATE_REF']))
+                        results[model].loc['Mean Return', str(thresh)] = df_aux.loc[:, 'log_returns'].mean()-cost
+                        results[model].loc['Std Return', str(thresh)] = df_aux.loc[:, 'log_returns'].std()
+                        results[model].loc['T-Stat', str(thresh)] = results[model].loc['Mean Return', str(thresh)] / results[model].loc['Std Return', str(thresh)] * np.sqrt(len(df_aux))
+                        results[model].loc['Sharpe', str(thresh)] = results[model].loc['Mean Return', str(thresh)] / results[model].loc['Std Return', str(thresh)] * np.sqrt(252)
+                        results[model].loc['Hit Ratio', str(thresh)] = len(df_aux[df_aux['log_returns'] > 0])/len(df_aux)
+                        results[model].loc['Hit Above Cost', str(thresh)] = len(df_aux[df_aux['log_returns'] > cost])/len(df_aux)
+                        results[model].loc['P_05', str(thresh)] = np.percentile(df_aux['log_returns'], 5)
+                        results[model].loc['P_10', str(thresh)] = np.percentile(df_aux['log_returns'], 10)
+                        results[model].loc['P_25', str(thresh)] = np.percentile(df_aux['log_returns'], 25)
+                        results[model].loc['P_50', str(thresh)] = np.percentile(df_aux['log_returns'], 50)
+                        results[model].loc['P_75', str(thresh)] = np.percentile(df_aux['log_returns'], 75)
+                        results[model].loc['P_90', str(thresh)] = np.percentile(df_aux['log_returns'], 90)
+                        results[model].loc['P_95', str(thresh)] = np.percentile(df_aux['log_returns'], 95)
+                        results[model].loc['DailyCashProfit', str(thresh)] = np.sum(df_aux['log_returns']-cost) * 0.05 * 3000000 / len(set(df['DATE_REF']))
 
-            # Create a column for TP, TN, FP, FN labels
-            confusion_label_col = 'confusion_label_' + model
-            df[confusion_label_col] = df.apply(
-                lambda row: self.confusion_label(row['y_true'], row[y_pred_col]), axis=1)
+                    if results[model].empty:
+                        continue
+                    results[model].iloc[0, :] = results[model].iloc[0, :].round(1)
+                    results[model].iloc[1:-1, :] = results[model].iloc[1:-1, :].round(4)
+                    results[model].iloc[-1, :] = results[model].iloc[-1, :].round(2)
 
-            # Arrange labels to match the desired quadrant layout
-            labels = ['TN', 'FP', 'FN', 'TP']
+                    # Configurar a tabela e salvar como figura de alta resolução
+                    fig, ax = plt.subplots(figsize=(12, 8))  # Aumenta o tamanho da figura para caber melhor o conteúdo
+                    ax.axis('tight')
+                    ax.axis('off')
 
-            fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-            axes = axes.flatten()
+                    # Obter os valores
+                    values = results[model].values
 
-            for idx, label in enumerate(labels):
-                subset = df[df[confusion_label_col] == label]
-                data = subset['log_returns']
-                ax = axes[idx]
-                ax.hist(data, bins=30, alpha=0.7, color='skyblue', edgecolor='black')
-                ax.set_title(f'{model} - {label} ({len(data)})')
+                    # Criar um mapeamento de cores (verde -> vermelho)
+                    cmap = plt.cm.RdYlGn  # Mapa de cores (verde para valores altos, vermelho para baixos)
 
-                # Calculate statistics
-                mean = data.mean()
-                std = data.std()
-                median = data.median()
-                q75 = data.quantile(0.75)
-                p90 = data.quantile(0.90)
-                p95 = data.quantile(0.95)
+                    # Criar a tabela
+                    table = ax.table(
+                        cellText=values,
+                        colLabels=results[model].columns,
+                        rowLabels=results[model].index,
+                        cellLoc='center',
+                        loc='center'
+                    )
 
-                # Plot vertical lines for statistics
-                ax.axvline(mean, color='red', linestyle='dashed', linewidth=1, label=f'Mean: {100*mean:.2f}%')
-                ax.axvline(median, color='green', linestyle='dashed', linewidth=1, label=f'Median: {100*median:.2f}%')
-                ax.axvline(q75, color='blue', linestyle='dashed', linewidth=1, label=f'75th percentile: {100*q75:.2f}%')
-                ax.axvline(p90, color='cyan', linestyle='dashed', linewidth=1, label=f'90th percentile: {100*p90:.2f}%')
-                ax.axvline(p95, color='magenta', linestyle='dashed', linewidth=1, label=f'95th percentile: {100*p95:.2f}%')
-                ax.axvline(mean, color='grey', linestyle='dashed', linewidth=0.5, label=f'Std: {100*std:.2f}%')
+                    # Ajustar a fonte
+                    table.auto_set_font_size(False)
+                    table.set_fontsize(10)
+                    table.auto_set_column_width(col=list(range(len(results[model].columns))))
 
-                ax.legend()
-                ax.set_xlabel('Log Returns')
-                ax.set_ylabel('Frequency')
+                    # Aplicar cores às células com normalização por linha
+                    for (i, j), cell in table.get_celld().items():
+                        if i > 0 and j >= 0:  # Ignorar cabeçalhos de coluna e índice da linha
+                            row_index = i - 1  # Ajustar índice devido ao cabeçalho
+                            row_values = values[row_index]  # Obter os valores da linha atual
 
-            plt.tight_layout()
-            plt.savefig(f'data/evaluation/{model}_histograms_returns.png')
-            plt.close()
+                            # Normalizar os valores da linha
+                            norm = mcolors.Normalize(vmin=np.min(row_values), vmax=np.max(row_values))
+
+                            # Obter a cor baseada no valor normalizado
+                            value = row_values[j]
+                            color = cmap(norm(value))
+                            cell.set_facecolor((color, 0.5))
+
+                    # Configurar título
+                    plt.title(f'Backtest Results for {model} {date} (cost {str(cost)})', fontsize=16, pad=20)
+
+                    # Salvar a figura com alta resolução
+                    plt.savefig(
+                        f'data/backtest/backtest_{model}_{date}_{str(cost)}.png',
+                        format='png',  # Salvar como PNG
+                        dpi=300,  # Definir alta resolução (300 dpi)
+                        bbox_inches='tight'  # Remover espaços em branco desnecessários
+                    )
+
+                    # Fechar a figura para liberar memória
+                    plt.close()
+
+    def plot_return_distribution(self, df):
+        for thresh in [0.01, 0.02, 0.03, 0.04, 0.05]:
+            # Get the model names by parsing the columns
+            pred_cols = [col for col in df.columns if col.startswith('y_pred_')]
+            models = [col.replace('y_pred_', '') for col in pred_cols]
+
+            for model in models:
+                # Get the predicted labels
+                y_pred_col = 'y_pred_' + model
+
+                # Create a column for TP, TN, FP, FN labels
+                confusion_label_col = 'confusion_label_' + model
+                df[confusion_label_col] = df.apply(
+                    lambda row: self.confusion_label(row['y_true'], row[y_pred_col], thresh=thresh), axis=1)
+
+                # Arrange labels to match the desired quadrant layout
+                labels = ['TN', 'FP', 'FN', 'TP']
+
+                fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+                axes = axes.flatten()
+
+                for idx, label in enumerate(labels):
+                    subset = df[df[confusion_label_col] == label]
+                    data = subset['log_returns']
+                    ax = axes[idx]
+                    ax.hist(data, bins=30, alpha=0.7, color='skyblue', edgecolor='black')
+                    ax.set_title(f'{model} - {label} ({len(data)})')
+
+                    # Calculate statistics
+                    mean = data.mean()
+                    std = data.std()
+                    median = data.median()
+                    q75 = data.quantile(0.75)
+                    p90 = data.quantile(0.90)
+                    p95 = data.quantile(0.95)
+
+                    # Plot vertical lines for statistics
+                    ax.axvline(mean, color='red', linestyle='dashed', linewidth=1, label=f'Mean: {100 * mean:.2f}%')
+                    ax.axvline(median, color='green', linestyle='dashed', linewidth=1,
+                               label=f'Median: {100 * median:.2f}%')
+                    ax.axvline(q75, color='blue', linestyle='dashed', linewidth=1,
+                               label=f'75th percentile: {100 * q75:.2f}%')
+                    ax.axvline(p90, color='cyan', linestyle='dashed', linewidth=1,
+                               label=f'90th percentile: {100 * p90:.2f}%')
+                    ax.axvline(p95, color='magenta', linestyle='dashed', linewidth=1,
+                               label=f'95th percentile: {100 * p95:.2f}%')
+                    ax.axvline(mean, color='grey', linestyle='dashed', linewidth=0.5, label=f'Std: {100 * std:.2f}%')
+
+                    ax.legend()
+                    ax.set_xlabel('Log Returns')
+                    ax.set_ylabel('Frequency')
+
+                plt.tight_layout()
+                plt.savefig(f'data/evaluation/{model}_histograms_returns_{thresh}.png')
+                plt.close()
 
     @staticmethod
-    def confusion_label(y_true, y_pred, thresh=0.5):
+    def confusion_label(y_true, y_pred, thresh=0.9):
         if y_true == 1 and y_pred > thresh:
             return 'TP'
         elif y_true == 0 and y_pred <= thresh:
