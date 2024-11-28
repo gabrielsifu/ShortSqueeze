@@ -3,13 +3,14 @@ import os
 import numpy as np
 import pandas as pd
 from sklearn.utils import class_weight
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LogisticRegression, LinearRegression
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.callbacks import EarlyStopping
 from tensorflow.keras.optimizers import Adam
+
 
 class DataScientist:
     def __init__(self, sett):
@@ -100,19 +101,29 @@ class DataScientist:
                 verbose=1
             )
             nn_probs_train = model_nn.predict(self.x_train_full).flatten()
+
+            # Train logistic regression models
             nn_calibrator = LogisticRegression(max_iter=10000)
             nn_calibrator.fit(nn_probs_train.reshape(-1, 1), self.y_train_full)
 
-            # Logistic Regression Model without class weights
             model_lr = LogisticRegression(max_iter=10000)
             model_lr.fit(self.x_train_full, self.y_train_full)
 
-            # Logistic Regression Model with balanced class weights
             model_lr_balanced = LogisticRegression(class_weight='balanced', max_iter=10000)
             model_lr_balanced.fit(self.x_train_full, self.y_train_full)
+
             lr_balanced_probs_train = model_lr_balanced.predict_proba(self.x_train_full)[:, 1]
             lr_calibrator = LogisticRegression(max_iter=10000)
             lr_calibrator.fit(lr_balanced_probs_train.reshape(-1, 1), self.y_train_full)
+
+            # Train Linear Regression Model
+            x_for_linear = pd.DataFrame({
+                'Spread': self.x_train_full['Spread'],  # Assuming 'Spread' is in x_train_full
+                'NN_Predictions': nn_probs_train
+            })
+            y_for_linear = df.loc[self.x_train_full.index, 'LogReturns']
+            linear_reg = LinearRegression()
+            linear_reg.fit(x_for_linear, y_for_linear)
 
             # Save the models with the corresponding key
             self.models[key] = {
@@ -120,7 +131,8 @@ class DataScientist:
                 'logistic_regression': model_lr,
                 'logistic_regression_balanced': model_lr_balanced,
                 'nn_calibrator': nn_calibrator,
-                'lr_calibrator': lr_calibrator
+                'lr_calibrator': lr_calibrator,
+                'linear_regression': linear_reg
             }
 
         # Save all models to the specified directory
@@ -135,3 +147,4 @@ class DataScientist:
             joblib.dump(model_dict['logistic_regression_balanced'], f'./data/models/model_lr_balanced_{key}.joblib')
             joblib.dump(model_dict['nn_calibrator'], f'./data/models/nn_calibrator_{key}.joblib')
             joblib.dump(model_dict['lr_calibrator'], f'./data/models/lr_calibrator_{key}.joblib')
+            joblib.dump(model_dict['linear_regression'], f'./data/models/linear_reg_{key}.joblib')

@@ -120,6 +120,9 @@ class FeatureEngineer:
             ['VOLUME/BALCAO', 'VOLUME/Eletronico D+0', 'VOLUME/Eletronico D+1']].sum(axis=1)
         data['Coverage'] = data['VolumeAluguel']/data['VolumeTraded']
 
+        data['LogReturns'] = np.log(data['PRICE_BID']) - np.log(data.groupby('TRADINGITEM_ID')['PRICE_ASK'].shift(1))
+        data = data.dropna(subset=['LogReturns'])
+
         data = self.calculate_rolling(
             data, [
                 'LogReturns', 'VolumeTraded', 'Coverage',

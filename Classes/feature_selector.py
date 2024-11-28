@@ -51,7 +51,7 @@ class FeatureSelector:
         keys_list = list(self.xy_train.keys())
         first_key = keys_list[0]
         df_train = self.xy_train[first_key]
-        x = df_train.drop(columns=['y', 'LogReturns'])
+        x = df_train.drop(columns=['y', 'LogReturns', 'Spread'])
         corr_matrix = x.corr().abs()
         upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
         to_drop = set()
@@ -83,7 +83,7 @@ class FeatureSelector:
         keys_list = list(self.xy_train.keys())
         first_key = keys_list[0]
         df_train = self.xy_train[first_key]
-        x_columns = df_train.drop(columns=['y', 'LogReturns']).columns
+        x_columns = df_train.drop(columns=['y', 'LogReturns', 'Spread']).columns
         # Get the feature importances and normalize them
         importances = self.feature_importances_.reindex(x_columns)
         importances = importances / importances.sum()

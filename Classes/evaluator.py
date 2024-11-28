@@ -100,6 +100,7 @@ class Evaluator:
 
     def plot_histograms(self, histograms):
         """Plot and save histograms of predicted values for each model."""
+        os.makedirs('data/evaluation/histogram_predictions', exist_ok=True)
         for model_col, (y_pred_0, y_pred_1) in histograms.items():
             fig, ax1 = plt.subplots(figsize=(10, 6))
 
@@ -128,11 +129,12 @@ class Evaluator:
             # plt.title(f'Predicted Values by True Label - {model_name}')
             plt.title(f'Valores preditos pelo rótulo real - {model_name}')
             plt.tight_layout()
-            plt.savefig(f'data/evaluation/predicted_values_histogram_dual_axis_{model_name}.png')
+            plt.savefig(f'data/evaluation/histogram_predictions/{model_name}.png')
             plt.close()
 
     def compute_confusion_matrix(self, all_predictions):
         """Compute and plot the confusion matrix for each model."""
+        os.makedirs('data/evaluation/confusion_matrix', exist_ok=True)
         model_columns = [col for col in all_predictions.columns if col.startswith('y_pred')]
 
         for model_col in model_columns:
@@ -161,11 +163,12 @@ class Evaluator:
                 ax.text(j, i, f'{z}', ha='center', va='center', color='red')
 
             plt.tight_layout()
-            plt.savefig(f'data/evaluation/confusion_matrix_{model_name}.png')
+            plt.savefig(f'data/evaluation/confusion_matrix/{model_name}.png')
             plt.close()
 
     def compute_roc_auc(self, all_predictions):
         """Compute ROC AUC curve and its value for each model."""
+        os.makedirs('data/evaluation/roc_curve', exist_ok=True)
         y_true = all_predictions['y_true']
         model_columns = [col for col in all_predictions.columns if col.startswith('y_pred')]
 
@@ -195,7 +198,7 @@ class Evaluator:
             plt.title(f'Curva ROC - {model_name}')
             plt.legend(loc='lower right')
             plt.grid(True)
-            plt.savefig(f'data/evaluation/roc_curve_{model_name}.png')
+            plt.savefig(f'data/evaluation/roc_curve/{model_name}.png')
             plt.close()
 
     def compute_classification_metrics(self, all_predictions):
@@ -257,12 +260,81 @@ class Evaluator:
             model_name = model_col.replace('y_pred_', '')
             lift_data.to_csv(f'data/evaluation/lift_data_{model_name}.csv', index=False)
 
+    def plot_short_squeeze(self, df):
+        # Group by 'DATE_REF' and count the number of 'log_returns'
+        df = df[df['log_returns'] > 0.1]
+        df_counts = df.groupby('DATE_REF')['log_returns'].count()
+
+        # Plot the time series
+        plt.figure(figsize=(12, 6))
+        df_counts.plot()
+        plt.title('Count of Short Squeezes Over Time')
+        plt.xlabel('DATE_REF')
+        plt.ylabel('Count')
+        plt.grid(True)
+        plt.savefig(f'data/evaluation/short_squeeze_time_series.png', dpi=300)
+        plt.close()
+
+    def plot_n_trades(self, df):
+        # Group by 'DATE_REF' and count the number of 'log_returns'
+        df = df[df['y_pred_linear_regression'] > 0]
+        df_counts = df.groupby('DATE_REF')['y_pred_linear_regression'].count()
+
+        # Plot the time series
+        plt.figure(figsize=(12, 6))
+        df_counts.plot()
+        plt.title('Trade Signal Over Time')
+        plt.xlabel('DATE_REF')
+        plt.ylabel('Count')
+        plt.grid(True)
+        os.makedirs('data/backtest3/', exist_ok=True)
+        plt.savefig(f'data/backtest3/n_trades.png', dpi=300)
+        plt.close()
+
+    def plot_combined_counts(self, df):
+        # Filtrar e agrupar para Short Squeezes
+        df_short_squeeze = df[df['log_returns'] > 0.1]
+        counts_short_squeeze = df_short_squeeze.groupby('DATE_REF')['log_returns'].count()
+
+        # Filtrar e agrupar para Trade Signals
+        df_n_trades = df[df['y_pred_linear_regression'] > 0]
+        counts_n_trades = df_n_trades.groupby('DATE_REF')['y_pred_linear_regression'].count()
+
+        # Criar figura
+        plt.figure(figsize=(12, 6))
+
+        # Plotar ambas as séries no mesmo eixo
+        plt.plot(counts_short_squeeze.index, counts_short_squeeze.values, label='Short Squeezes', color='blue')
+        plt.plot(counts_n_trades.index, counts_n_trades.values, label='Trade Signals', color='green')
+
+        # Adicionar títulos e legendas
+        plt.title('Contagem de Short Squeezes e Trade Signals ao Longo do Tempo')
+        plt.xlabel('DATE_REF')
+        plt.ylabel('Contagem')
+        plt.legend()
+        plt.grid(True)
+        # Ajustar layout e salvar figura
+        plt.tight_layout()
+        os.makedirs('data/backtest3/', exist_ok=True)
+        plt.savefig('data/backtest3/n_trades_short_squeeze.png', dpi=300)
+        plt.close()
+
     def evaluate(self):
         """Run the full evaluation process."""
         self.ensure_evaluation_directory()
         all_predictions = self.concatenate_predictions()
+        self.plot_short_squeeze(all_predictions)
+        self.plot_n_trades(all_predictions)
+        self.plot_combined_counts(all_predictions)
+        all_predictions['log_returns'] = all_predictions['log_returns'].clip(
+            upper=np.max([all_predictions['log_returns'].quantile(0.99), 0.1]))
+        expected_return = all_predictions.loc[:, ['DATE_REF', 'y_pred_linear_regression', 'log_returns']].copy()
+        self.compute_backtest3(expected_return)
+
+        all_predictions = all_predictions.drop(columns=['y_pred_linear_regression'])
         all_predictions = self.compute_cross_entropy_loss(all_predictions)
         all_predictions = self.prepare_data(all_predictions)
+
         loss_moving_avg = self.compute_moving_average_loss(all_predictions)
         self.plot_moving_average_loss(loss_moving_avg)
         histograms = self.prepare_histogram_data(all_predictions)
@@ -275,6 +347,7 @@ class Evaluator:
         # Compute backtest
         self.compute_backtest(all_predictions)
         self.compute_backtest2(all_predictions)
+
         # Compute ROC AUC and plot ROC curve for each model
         self.compute_roc_auc(all_predictions)
         # Compute classification metrics for each model
@@ -290,15 +363,18 @@ class Evaluator:
         pred_cols = [col for col in df.columns if col.startswith('y_pred_')]
         models = [col.replace('y_pred_', '') for col in pred_cols]
         os.makedirs('data/backtest/', exist_ok=True)
-        for cost in [0.003, 0.007]:
+        os.makedirs('data/backtest_cum/', exist_ok=True)
+        for cost in [0.001]:
             for date in [None, 'pre_2021', 'pos_2020']:
                 for model in models:
                     results[model] = pd.DataFrame(
-                        index=['Daily Trades', 'Mean Return', 'Std Return', 'T-Stat', 'Sharpe', 'Hit Ratio',
-                               'Hit Above Cost',
+                        index=['Daily Trades', 'Mean Return', 'Std Return', 'T-Stat',
+                               'Hit Ratio', 'Hit Above Cost',
                                'P_05', 'P_10', 'P_25', 'P_50', 'P_75', 'P_90', 'P_95', 'DailyCashProfit']
                     )
-                    for thresh in [0, 0.005, 0.01, 0.02, 0.03, 0.04, 0.05]:
+                    # Dictionary to store cumulative profits for each threshold
+                    cumulative_profits = {}
+                    for thresh in [0.005, 0.01, 0.02, 0.03, 0.04, 0.05]:
                         df_aux = df.copy()
                         df_aux = df_aux.loc[:, ['DATE_REF', 'log_returns', f'y_pred_{model}']]
                         df_aux = df_aux[df_aux[f'y_pred_{model}'] >= thresh]
@@ -311,13 +387,18 @@ class Evaluator:
 
                         if df_aux.empty:
                             continue
+                        unique_dates = df_aux['DATE_REF'].nunique()
                         results[model].loc['Daily Trades', str(thresh)] = len(df_aux) / len(set(df['DATE_REF']))
-                        results[model].loc['Mean Return', str(thresh)] = df_aux.loc[:, 'log_returns'].mean()-cost
-                        results[model].loc['Std Return', str(thresh)] = df_aux.loc[:, 'log_returns'].std()
-                        results[model].loc['T-Stat', str(thresh)] = results[model].loc['Mean Return', str(thresh)] / results[model].loc['Std Return', str(thresh)] * np.sqrt(len(df_aux))
-                        results[model].loc['Sharpe', str(thresh)] = results[model].loc['Mean Return', str(thresh)] / results[model].loc['Std Return', str(thresh)] * np.sqrt(252)
-                        results[model].loc['Hit Ratio', str(thresh)] = len(df_aux[df_aux['log_returns'] > 0])/len(df_aux)
-                        results[model].loc['Hit Above Cost', str(thresh)] = len(df_aux[df_aux['log_returns'] > cost])/len(df_aux)
+                        results[model].loc['Mean Return', str(thresh)] = np.exp(df_aux.loc[:, 'log_returns']).mean() - 1 - cost
+                        results[model].loc['Std Return', str(thresh)] = np.exp(df_aux['log_returns']).std()
+                        results[model].loc['T-Stat', str(thresh)] = results[model].loc['Mean Return', str(thresh)] / \
+                                                                    results[model].loc[
+                                                                        'Std Return', str(thresh)] * np.sqrt(
+                            len(df_aux))
+                        results[model].loc['Hit Ratio', str(thresh)] = len(df_aux[df_aux['log_returns'] > 0]) / len(
+                            df_aux)
+                        results[model].loc['Hit Above Cost', str(thresh)] = len(
+                            df_aux[df_aux['log_returns'] > cost]) / len(df_aux)
                         results[model].loc['P_05', str(thresh)] = np.percentile(df_aux['log_returns'], 5)
                         results[model].loc['P_10', str(thresh)] = np.percentile(df_aux['log_returns'], 10)
                         results[model].loc['P_25', str(thresh)] = np.percentile(df_aux['log_returns'], 25)
@@ -325,7 +406,21 @@ class Evaluator:
                         results[model].loc['P_75', str(thresh)] = np.percentile(df_aux['log_returns'], 75)
                         results[model].loc['P_90', str(thresh)] = np.percentile(df_aux['log_returns'], 90)
                         results[model].loc['P_95', str(thresh)] = np.percentile(df_aux['log_returns'], 95)
-                        results[model].loc['DailyCashProfit', str(thresh)] = np.sum(df_aux['log_returns']-cost) * 0.05 * 3000000 / len(set(df['DATE_REF']))
+                        results[model].loc['DailyCashProfit', str(thresh)] = np.sum((np.exp(
+                            df_aux.loc[:, 'log_returns']) - 1 - cost) * 0.01 * 3000000) / unique_dates
+
+                        if date is None:
+                            # Compute per-trade profit
+                            df_aux['profit'] = (np.exp(df_aux['log_returns'])-1 - cost) * 0.01 * 3000000
+
+                            # Group by date and sum profits
+                            daily_profit = df_aux.groupby('DATE_REF')['profit'].sum().fillna(0)
+
+                            # Compute cumulative profit
+                            cumulative_profit = daily_profit.cumsum()
+
+                            # Store cumulative profit for this threshold
+                            cumulative_profits[str(thresh)] = cumulative_profit
 
                     if results[model].empty:
                         continue
@@ -333,18 +428,18 @@ class Evaluator:
                     results[model].iloc[1:-1, :] = results[model].iloc[1:-1, :].round(4)
                     results[model].iloc[-1, :] = results[model].iloc[-1, :].round(2)
 
-                    # Configurar a tabela e salvar como figura de alta resolução
-                    fig, ax = plt.subplots(figsize=(12, 8))  # Aumenta o tamanho da figura para caber melhor o conteúdo
+                    # Configure the table and save as high-resolution figure
+                    fig, ax = plt.subplots(figsize=(12, 8))
                     ax.axis('tight')
                     ax.axis('off')
 
-                    # Obter os valores
+                    # Get the values
                     values = results[model].values
 
-                    # Criar um mapeamento de cores (verde -> vermelho)
-                    cmap = plt.cm.RdYlGn  # Mapa de cores (verde para valores altos, vermelho para baixos)
+                    # Create a color mapping (green -> red)
+                    cmap = plt.cm.RdYlGn
 
-                    # Criar a tabela
+                    # Create the table
                     table = ax.table(
                         cellText=values,
                         colLabels=results[model].columns,
@@ -353,53 +448,79 @@ class Evaluator:
                         loc='center'
                     )
 
-                    # Ajustar a fonte
+                    # Adjust font
                     table.auto_set_font_size(False)
                     table.set_fontsize(10)
                     table.auto_set_column_width(col=list(range(len(results[model].columns))))
 
-                    # Aplicar cores às células com normalização por linha
+                    # Apply colors to cells with normalization per row
                     for (i, j), cell in table.get_celld().items():
-                        if i > 0 and j >= 0:  # Ignorar cabeçalhos de coluna e índice da linha
-                            row_index = i - 1  # Ajustar índice devido ao cabeçalho
-                            row_values = values[row_index]  # Obter os valores da linha atual
+                        if i > 0 and j >= 0:  # Ignore column headers and row index
+                            row_index = i - 1
+                            row_values = values[row_index]
 
-                            # Normalizar os valores da linha
+                            # Normalize the row values
                             norm = mcolors.Normalize(vmin=np.min(row_values), vmax=np.max(row_values))
 
-                            # Obter a cor baseada no valor normalizado
+                            # Get the color based on the normalized value
                             value = row_values[j]
                             color = cmap(norm(value))
                             cell.set_facecolor((color, 0.5))
 
-                    # Configurar título
+                    # Set title
                     plt.title(f'Backtest Results for {model} {date} (cost {str(cost)})', fontsize=16, pad=20)
 
-                    # Salvar a figura com alta resolução
+                    # Save the figure with high resolution
                     plt.savefig(
                         f'data/backtest/backtest_{model}_{date}_{str(cost)}.png',
-                        format='png',  # Salvar como PNG
-                        dpi=300,  # Definir alta resolução (300 dpi)
-                        bbox_inches='tight'  # Remover espaços em branco desnecessários
+                        format='png',
+                        dpi=300,
+                        bbox_inches='tight'
                     )
-
-                    # Fechar a figura para liberar memória
                     plt.close()
+
+                    # Plot cumulative profits over time for each threshold
+                    if cumulative_profits:
+                        # Convert cumulative_profits dictionary to DataFrame
+                        cumulative_profits_df = pd.DataFrame(cumulative_profits)
+                        cumulative_profits_df = cumulative_profits_df.ffill()
+                        cumulative_profits_df = cumulative_profits_df.fillna(0)
+                        cumulative_profits_df.index = pd.to_datetime(cumulative_profits_df.index)
+
+                        # Sort the DataFrame by index (date)
+                        cumulative_profits_df = cumulative_profits_df.sort_index()
+
+                        # Plot cumulative profits
+                        plt.figure(figsize=(12, 8))
+                        for thresh in cumulative_profits_df.columns:
+                            plt.plot(cumulative_profits_df.index, cumulative_profits_df[thresh],
+                                     label=f'Threshold {thresh}')
+                        plt.legend()
+                        plt.title(f'Cumulative Profit Over Time for {model} {date} (cost {str(cost)})')
+                        plt.xlabel('Date')
+                        plt.ylabel('Cumulative Profit')
+                        plt.grid(True)
+                        plt.tight_layout()
+                        plt.savefig(f'data/backtest_cum/cumulative_profit_{model}_{date}_{str(cost)}.png', dpi=300)
+                        plt.close()
 
     def compute_backtest2(self, df):
         results = {}
         # Get the model names by parsing the columns
         pred_cols = [col for col in df.columns if col.startswith('y_pred_')]
         models = [col.replace('y_pred_', '') for col in pred_cols]
-        os.makedirs('data/backtest/', exist_ok=True)
-        for cost in [0.003, 0.007]:
+        os.makedirs('data/backtest2/', exist_ok=True)
+        os.makedirs('data/backtest2_cum/', exist_ok=True)
+        for cost in [0.001]:
             for date in [None, 'pre_2021', 'pos_2020']:
                 for model in models:
                     results[model] = pd.DataFrame(
-                        index=['Daily Trades', 'Mean Return', 'Std Return', 'T-Stat', 'Sharpe', 'Hit Ratio',
-                               'Hit Above Cost',
+                        index=['Daily Trades', 'Mean Return', 'Std Return', 'T-Stat',
+                               'Hit Ratio', 'Hit Above Cost',
                                'P_05', 'P_10', 'P_25', 'P_50', 'P_75', 'P_90', 'P_95', 'DailyCashProfit']
                     )
+                    # Dictionary to store cumulative profits for each top_N
+                    cumulative_profits = {}
                     for top_N in [32, 16, 8, 4, 2, 1]:
                         df_aux = df.copy()
                         df_aux = df_aux.loc[:, ['DATE_REF', 'log_returns', f'y_pred_{model}']]
@@ -423,17 +544,12 @@ class Evaluator:
                         # Compute metrics
                         unique_dates = df_aux['DATE_REF'].nunique()
                         results[model].loc['Daily Trades', str(top_N)] = len(df_aux) / unique_dates
-                        results[model].loc['Mean Return', str(top_N)] = df_aux['log_returns'].mean() - cost
-                        results[model].loc['Std Return', str(top_N)] = df_aux['log_returns'].std()
+                        results[model].loc['Mean Return', str(top_N)] = np.exp(df_aux.loc[:, 'log_returns']).mean() - 1 - cost
+                        results[model].loc['Std Return', str(top_N)] = np.exp(df_aux['log_returns']).std()
                         results[model].loc['T-Stat', str(top_N)] = (
                                 results[model].loc['Mean Return', str(top_N)]
                                 / results[model].loc['Std Return', str(top_N)]
                                 * np.sqrt(len(df_aux))
-                        )
-                        results[model].loc['Sharpe', str(top_N)] = (
-                                results[model].loc['Mean Return', str(top_N)]
-                                / results[model].loc['Std Return', str(top_N)]
-                                * np.sqrt(252)
                         )
                         results[model].loc['Hit Ratio', str(top_N)] = (
                                 (df_aux['log_returns'] > 0).sum() / len(df_aux)
@@ -448,11 +564,21 @@ class Evaluator:
                         results[model].loc['P_75', str(top_N)] = np.percentile(df_aux['log_returns'], 75)
                         results[model].loc['P_90', str(top_N)] = np.percentile(df_aux['log_returns'], 90)
                         results[model].loc['P_95', str(top_N)] = np.percentile(df_aux['log_returns'], 95)
-                        results[model].loc['DailyCashProfit', str(top_N)] = (
-                                                                                    df_aux[
-                                                                                        'log_returns'].sum() - cost * len(
-                                                                                df_aux)
-                                                                            ) * 0.05 * 3000000 / unique_dates
+                        results[model].loc['DailyCashProfit', str(top_N)] = np.sum((np.exp(
+                            df_aux.loc[:, 'log_returns']) - 1 - cost) * 0.01 * 3000000) / unique_dates
+
+                        if date is None:
+                            # Compute per-trade profit
+                            df_aux['profit'] = (np.exp(df_aux['log_returns']) - 1 - cost) * 0.01 * 3000000
+
+                            # Group by date and sum profits
+                            daily_profit = df_aux.groupby('DATE_REF')['profit'].sum().fillna(0)
+
+                            # Compute cumulative profit
+                            cumulative_profit = daily_profit.cumsum()
+
+                            # Store cumulative profit for this top_N
+                            cumulative_profits[str(top_N)] = cumulative_profit
 
                     if results[model].empty:
                         continue
@@ -509,7 +635,207 @@ class Evaluator:
                     # Close the figure to free memory
                     plt.close()
 
+                    # Plot cumulative profits over time for each top_N
+                    if cumulative_profits:
+                        # Convert cumulative_profits dictionary to DataFrame
+                        cumulative_profits_df = pd.DataFrame(cumulative_profits)
+                        cumulative_profits_df = cumulative_profits_df.ffill()
+                        cumulative_profits_df = cumulative_profits_df.fillna(0)
+                        cumulative_profits_df.index = pd.to_datetime(cumulative_profits_df.index)
+
+                        # Sort the DataFrame by index (date)
+                        cumulative_profits_df = cumulative_profits_df.sort_index()
+
+                        # Plot cumulative profits
+                        plt.figure(figsize=(12, 8))
+                        for top_N in cumulative_profits_df.columns:
+                            plt.plot(cumulative_profits_df.index, cumulative_profits_df[top_N],
+                                     label=f'Top {top_N}')
+                        plt.legend()
+                        plt.title(f'Cumulative Profit Over Time for {model} {date} (cost {str(cost)})')
+                        plt.xlabel('Date')
+                        plt.ylabel('Cumulative Profit')
+                        plt.grid(True)
+                        plt.tight_layout()
+                        plt.savefig(f'data/backtest2_cum/cumulative_profit_{model}_{date}_{str(cost)}.png', dpi=300)
+                        plt.close()
+
+    def compute_backtest3(self, df):
+
+        # Get the model names by parsing the columns
+        results = {}
+        pred_cols = [col for col in df.columns if col.startswith('y_pred_')]
+        models = [col.replace('y_pred_', '') for col in pred_cols]
+        os.makedirs('data/backtest3/', exist_ok=True)
+        os.makedirs('data/backtest3_cum/', exist_ok=True)
+        for cost in [0.001]:
+            for model in models:
+                # Initialize results DataFrame outside the threshold loop
+                results[model] = pd.DataFrame(
+                    index=['Daily Trades', 'Mean Return', 'Std Return', 'T-Stat',
+                           'Hit Ratio', 'Hit Above Cost',
+                           'P_05', 'P_10', 'P_25', 'P_50', 'P_75', 'P_90', 'P_95', 'DailyCashProfit']
+                )
+                # Dictionary to store cumulative profits for each threshold
+                cumulative_profits = {}
+                cumulative_log_returns = {}
+                for thresh in [-0.002, 0, 0.002]:
+                    df_aux = df.copy()
+                    df_aux = df_aux.loc[:, ['DATE_REF', 'log_returns', f'y_pred_{model}']]
+                    df_aux = df_aux[df_aux[f'y_pred_{model}'] > (cost + thresh)]
+
+                    if df_aux.empty:
+                        continue
+
+                    # Compute metrics
+                    unique_dates = df_aux['DATE_REF'].nunique()
+                    results[model].loc['Daily Trades', str(thresh)] = len(df_aux) / unique_dates
+                    results[model].loc['Mean Return', str(thresh)] = np.exp(df_aux.loc[:, 'log_returns'].mean()) - 1 - cost
+                    results[model].loc['Std Return', str(thresh)] = np.exp(df_aux['log_returns']).std()
+                    results[model].loc['T-Stat', str(thresh)] = (
+                            results[model].loc['Mean Return', str(thresh)]
+                            / results[model].loc['Std Return', str(thresh)]
+                            * np.sqrt(len(df_aux))
+                    )
+                    results[model].loc['Hit Ratio', str(thresh)] = (
+                            (df_aux['log_returns'] > 0).sum() / len(df_aux)
+                    )
+                    results[model].loc['Hit Above Cost', str(thresh)] = (
+                            (df_aux['log_returns'] > cost).sum() / len(df_aux)
+                    )
+                    results[model].loc['P_05', str(thresh)] = np.percentile(df_aux['log_returns'], 5)
+                    results[model].loc['P_10', str(thresh)] = np.percentile(df_aux['log_returns'], 10)
+                    results[model].loc['P_25', str(thresh)] = np.percentile(df_aux['log_returns'], 25)
+                    results[model].loc['P_50', str(thresh)] = np.percentile(df_aux['log_returns'], 50)
+                    results[model].loc['P_75', str(thresh)] = np.percentile(df_aux['log_returns'], 75)
+                    results[model].loc['P_90', str(thresh)] = np.percentile(df_aux['log_returns'], 90)
+                    results[model].loc['P_95', str(thresh)] = np.percentile(df_aux['log_returns'], 95)
+                    results[model].loc['DailyCashProfit', str(thresh)] = np.sum((np.exp(
+                        df_aux.loc[:, 'log_returns']) - 1 - cost) * 0.01 * 3000000) / unique_dates
+
+                    # Compute per-trade profit
+                    df_aux['profit'] = (np.exp(df_aux['log_returns']) - 1 - cost) * 0.01 * 3000000
+
+                    # Group by date and sum profits
+                    daily_profit = df_aux.groupby('DATE_REF')['profit'].sum().fillna(0)
+                    # Compute cumulative profit
+                    cumulative_profit = daily_profit.cumsum()
+                    # Store cumulative profit for this threshold
+                    cumulative_profits[str(thresh)] = cumulative_profit
+
+                    df_aux['returns'] = np.exp(df_aux['log_returns'])-1
+                    daily_return = df_aux.groupby('DATE_REF')['returns'].mean()
+                    daily_log_return = np.log(daily_return+1)
+                    cumulative_return = daily_log_return.cumsum()
+                    cumulative_log_returns[str(thresh)] = cumulative_return
+
+                # After the threshold loop, format and round the results
+                if results[model].empty:
+                    continue
+                results[model].iloc[0, :] = results[model].iloc[0, :].round(1)
+                results[model].iloc[1:-1, :] = results[model].iloc[1:-1, :].round(4)
+                results[model].iloc[-1, :] = results[model].iloc[-1, :].round(2)
+
+                # Configure the table and save as a high-resolution figure
+                fig, ax = plt.subplots(figsize=(12, 8))
+                ax.axis('tight')
+                ax.axis('off')
+
+                # Get the values
+                values = results[model].values
+
+                # Create a color mapping (green -> red)
+                cmap = plt.cm.RdYlGn
+
+                # Create the table
+                table = ax.table(
+                    cellText=values,
+                    colLabels=results[model].columns,
+                    rowLabels=results[model].index,
+                    cellLoc='center',
+                    loc='center'
+                )
+
+                # Adjust the font
+                table.auto_set_font_size(False)
+                table.set_fontsize(10)
+                table.auto_set_column_width(col=list(range(len(results[model].columns))))
+
+                # Apply colors to cells with normalization by row
+                for (i, j), cell in table.get_celld().items():
+                    if i > 0 and j >= 0:  # Ignore column headers and row index
+                        row_index = i - 1
+                        row_values = values[row_index]
+                        norm = mcolors.Normalize(vmin=np.min(row_values), vmax=np.max(row_values))
+                        value = row_values[j]
+                        color = cmap(norm(value))
+                        cell.set_facecolor((color, 0.5))
+
+                # Set title
+                plt.title(f'Backtest Results for {model} (cost {str(cost)})', fontsize=16, pad=20)
+
+                # Save the figure with high resolution
+                plt.savefig(
+                    f'data/backtest3/backtest_{model}_{str(cost)}.png',
+                    format='png',
+                    dpi=300,
+                    bbox_inches='tight'
+                )
+
+                # Close the figure to free memory
+                plt.close()
+
+                # Plot cumulative profits over time for each threshold
+                if cumulative_profits:
+                    # Convert cumulative_profits dictionary to DataFrame
+                    cumulative_profits_df = pd.DataFrame(cumulative_profits)
+                    cumulative_profits_df = cumulative_profits_df.ffill()
+                    cumulative_profits_df = cumulative_profits_df.fillna(0)
+                    cumulative_profits_df.index = pd.to_datetime(cumulative_profits_df.index)
+
+                    # Sort the DataFrame by index (date)
+                    cumulative_profits_df = cumulative_profits_df.sort_index()
+
+                    # Plot cumulative profits
+                    plt.figure(figsize=(12, 8))
+                    for thresh_label in cumulative_profits_df.columns:
+                        plt.plot(cumulative_profits_df.index, cumulative_profits_df[thresh_label],
+                                 label=f'Threshold {thresh_label}')
+                    plt.legend()
+                    plt.title(f'Cumulative Profit Over Time for {model} (cost {str(cost)})')
+                    plt.xlabel('Date')
+                    plt.ylabel('Cumulative Profit')
+                    plt.grid(True)
+                    plt.tight_layout()
+                    plt.savefig(f'data/backtest3_cum/cumulative_profit_{model}_{str(cost)}.png', dpi=300)
+                    plt.close()
+
+                if cumulative_log_returns:
+                    # Convert cumulative_profits dictionary to DataFrame
+                    cumulative_log_returns_df = pd.DataFrame(cumulative_log_returns)
+                    cumulative_log_returns_df = cumulative_log_returns_df.ffill()
+                    cumulative_log_returns_df = cumulative_log_returns_df.fillna(0)
+                    cumulative_log_returns_df.index = pd.to_datetime(cumulative_log_returns_df.index)
+
+                    # Sort the DataFrame by index (date)
+                    cumulative_log_returns_df = cumulative_log_returns_df.sort_index()
+
+                    # Plot cumulative profits
+                    plt.figure(figsize=(12, 8))
+                    for thresh_label in cumulative_log_returns_df.columns:
+                        plt.plot(cumulative_log_returns_df.index, cumulative_log_returns_df[thresh_label],
+                                 label=f'Threshold {thresh_label}')
+                    plt.legend()
+                    plt.title(f'Cumulative Log Return Over Time for {model} (cost {str(cost)})')
+                    plt.xlabel('Date')
+                    plt.ylabel('Cumulative Log Return')
+                    plt.grid(True)
+                    plt.tight_layout()
+                    plt.savefig(f'data/backtest3_cum/cumulative_log_return_{model}_{str(cost)}.png', dpi=300)
+                    plt.close()
+
     def plot_return_distribution(self, df):
+        os.makedirs('data/evaluation/histograms_returns/', exist_ok=True)
         for thresh in [0.01, 0.02, 0.03, 0.04, 0.05]:
             # Get the model names by parsing the columns
             pred_cols = [col for col in df.columns if col.startswith('y_pred_')]
@@ -562,7 +888,7 @@ class Evaluator:
                     ax.set_ylabel('Frequency')
 
                 plt.tight_layout()
-                plt.savefig(f'data/evaluation/{model}_histograms_returns_{thresh}.png')
+                plt.savefig(f'data/evaluation/histograms_returns/{model}_{thresh}.png')
                 plt.close()
 
     @staticmethod
