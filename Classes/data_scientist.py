@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from sklearn.utils import class_weight
 from sklearn.linear_model import LogisticRegression, LinearRegression
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
@@ -117,12 +118,26 @@ class DataScientist:
             lr_calibrator.fit(lr_balanced_probs_train.reshape(-1, 1), self.y_train_full)
 
             # Train Linear Regression Model
+            # Preparando os dados
             x_for_linear = pd.DataFrame({
-                'Spread': self.x_train_full['Spread'],  # Assuming 'Spread' is in x_train_full
+                'Spread': self.x_train_full['Spread'],  # Supondo que 'Spread' esteja em x_train_full
                 'NN_Predictions': nn_probs_train
             })
             y_for_linear = df.loc[self.x_train_full.index, 'LogReturns']
-            linear_reg = LinearRegression()
+
+            # Configurando restrições de monotonicidade:
+            # 1 = crescente, -1 = decrescente, 0 = sem restrição
+            # Spread está associado a y menor (decrescente), NN_Predictions a y maior (crescente)
+            monotonic_constraints = [-1, 1]
+
+            # Criando o modelo com restrição de monotonicidade
+            linear_reg = RandomForestRegressor(
+                n_estimators=1000, criterion='squared_error', min_samples_leaf=0.25, max_features=None, bootstrap=True,
+                n_jobs=-1, random_state=42, verbose=0,
+                monotonic_cst=monotonic_constraints,  # Restrições de monotonicidade
+            )
+
+            # Ajustando o modelo
             linear_reg.fit(x_for_linear, y_for_linear)
 
             # Save the models with the corresponding key

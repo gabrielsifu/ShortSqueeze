@@ -120,12 +120,23 @@ class FeatureEngineer:
             ['VOLUME/BALCAO', 'VOLUME/Eletronico D+0', 'VOLUME/Eletronico D+1']].sum(axis=1)
         data['Coverage'] = data['VolumeAluguel']/data['VolumeTraded']
 
-        data['LogReturns'] = np.log(data['PRICE_BID']) - np.log(data.groupby('TRADINGITEM_ID')['PRICE_ASK'].shift(1))
+        ibovespa = pd.read_csv('data/raw_data/IBOVESPA.csv')
+        ibovespa['DATE_REF'] = pd.to_datetime(ibovespa['DATE_REF'])
+        ibovespa['IbovespaReturn'] = ibovespa['PRICE_CLOSE']/ibovespa['PRICE_CLOSE'].shift(1)-1
+        ibovespa = ibovespa.dropna()
+
+        data = data.reset_index()
+        data = data.merge(ibovespa[['DATE_REF', 'IbovespaReturn']], on='DATE_REF', how='inner')
+        data = data.set_index(['DATE_REF', 'TRADINGITEM_ID'])
+
+        data['LogReturns'] = np.log(1+data['PRICE_BID']/data.groupby('TRADINGITEM_ID')['PRICE_ASK'].shift(1)-1-(data['IbovespaReturn']))
+        # data['LogReturns'] = np.log(1+data['PRICE_BID']/data.groupby('TRADINGITEM_ID')['PRICE_ASK'].shift(1)-1)
+
         data = data.dropna(subset=['LogReturns'])
 
         data = self.calculate_rolling(
             data, [
-                'LogReturns', 'VolumeTraded', 'Coverage',
+                'LogReturns', 'Returns', 'VolumeTraded', 'Coverage',
                 'Spread',
                 'ContratosAluguel', 'SharesAluguel', 'PctSharesAluguel', 'PctSharesAluguelNet', 'VolumeAluguel',
                 'DONOR_MIN/BALCAO', 'DONOR_MIN/Eletronico D+0', 'DONOR_MIN/Eletronico D+1',
@@ -147,7 +158,10 @@ class FeatureEngineer:
         data.fillna(0, inplace=True)
         data['y'] = (data['LogReturns'] > self.sett.FeatureEngineer.short_squeeze_threshold).astype(int)
         cols_to_shift = data.columns.difference(['y', 'LogReturns'])
-        data[cols_to_shift] = data[cols_to_shift].shift(-self.sett.FeatureEngineer.delay_x)
+        data = data.reset_index()
+        data = data.sort_values(by=['TRADINGITEM_ID', 'DATE_REF'])
+        data[cols_to_shift] = data.groupby('TRADINGITEM_ID')[cols_to_shift].shift(self.sett.FeatureEngineer.delay_x)
+        data = data.set_index(['DATE_REF', 'TRADINGITEM_ID'])
         data.dropna(how='any', inplace=True)
         self.data = data
         print("End")

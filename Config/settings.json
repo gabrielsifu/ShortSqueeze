@@ -11,8 +11,8 @@
   "FeatureEngineer": {
     "execute": false,
     "short_squeeze_threshold":0.1,
-    "delay_x": 2,
-    "first_test_year": 2015,
+    "delay_x": 1,
+    "first_test_year": 2019,
     "winsorize_lower": 1,
     "winsorize_upper": 99
   },
@@ -33,10 +33,10 @@
     }
   },
   "DataScientist": {
-    "execute": false
+    "execute": true
   },
   "MLOps": {
-    "execute": false
+    "execute": true
   },
   "Evaluator": {
     "execute": true

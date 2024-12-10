@@ -140,7 +140,7 @@ class Evaluator:
         for model_col in model_columns:
             # Binarize predictions based on threshold 0.5
             y_true = all_predictions['y_true']
-            y_pred_binary = (all_predictions[model_col] >= 0.03).astype(int)
+            y_pred_binary = (all_predictions[model_col] >= 0.01).astype(int)
             cm = confusion_matrix(y_true, y_pred_binary)
 
             # Save confusion matrix as a table
@@ -172,6 +172,8 @@ class Evaluator:
         y_true = all_predictions['y_true']
         model_columns = [col for col in all_predictions.columns if col.startswith('y_pred')]
 
+        plt.figure(figsize=(8, 6))
+
         for model_col in model_columns:
             y_pred_prob = all_predictions[model_col]
             fpr, tpr, thresholds = roc_curve(y_true, y_pred_prob)
@@ -179,27 +181,20 @@ class Evaluator:
 
             model_name = model_col.replace('y_pred_', '')
 
-            # Save ROC AUC value
-            # with open(f'data/evaluation/roc_auc_value_{model_name}.txt', 'w') as f:
-            #     f.write(f'ROC AUC ({model_name}): {roc_auc}')
+            # Plot ROC curve for each model
+            plt.plot(fpr, tpr, label=f'{model_name} (area = {roc_auc:.2f})')
 
-            # Plot ROC curve
-            plt.figure(figsize=(8, 6))
-            # plt.plot(fpr, tpr, label=f'ROC Curve (area = {roc_auc:.2f})')
-            plt.plot(fpr, tpr, label=f'Curva ROC (área = {roc_auc:.2f})')
-            plt.plot([0, 1], [0, 1], linestyle='--', color='gray')
-            plt.xlim([0.0, 1.0])
-            plt.ylim([0.0, 1.05])
-            # plt.xlabel('False Positive Rate')
-            plt.xlabel('Taxa de Falso Positivo')
-            # plt.ylabel('True Positive Rate')
-            plt.ylabel('Taxa de Verdadeiro Positivo')
-            # plt.title(f'Receiver Operating Characteristic (ROC) Curve - {model_name}')
-            plt.title(f'Curva ROC - {model_name}')
-            plt.legend(loc='lower right')
-            plt.grid(True)
-            plt.savefig(f'data/evaluation/roc_curve/{model_name}.png')
-            plt.close()
+        # Plot diagonal line
+        plt.plot([0, 1], [0, 1], linestyle='--', color='gray')
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.xlabel('False Positive')
+        plt.ylabel('True Positive')
+        plt.title('ROC Curve')
+        plt.legend(loc='lower right')
+        plt.grid(True)
+        plt.savefig('data/evaluation/roc_curve/combined_roc_curve.png')
+        plt.close()
 
     def compute_classification_metrics(self, all_predictions):
         """Compute precision, recall, F1, and Matthews correlation coefficient for each model."""
@@ -261,63 +256,131 @@ class Evaluator:
             lift_data.to_csv(f'data/evaluation/lift_data_{model_name}.csv', index=False)
 
     def plot_short_squeeze(self, df):
-        # Group by 'DATE_REF' and count the number of 'log_returns'
-        df = df[df['log_returns'] > 0.1]
-        df_counts = df.groupby('DATE_REF')['log_returns'].count()
+        """
+        Plota a contagem de eventos de short squeeze ao longo do tempo e inclui a média móvel no gráfico.
 
-        # Plot the time series
+        Args:
+            df (pd.DataFrame): DataFrame contendo os dados com as colunas 'DATE_REF' e 'log_returns'.
+        """
+        # Filtrar apenas os registros que atendem ao limite de short squeeze
+        df_filtered = df[df['log_returns'] > self.sett.FeatureEngineer.short_squeeze_threshold]
+
+        # Agrupar por 'DATE_REF' e contar o número de ocorrências de 'log_returns'
+        df_counts = df_filtered.groupby('DATE_REF')['log_returns'].count()
+
+        # Calcular a média móvel de 7 dias (ou outro período, se desejado)
+        moving_average = df_counts.rolling(window=7).mean()
+
+        # Plotar o gráfico da contagem de short squeezes e da média móvel
         plt.figure(figsize=(12, 6))
-        df_counts.plot()
-        plt.title('Count of Short Squeezes Over Time')
-        plt.xlabel('DATE_REF')
-        plt.ylabel('Count')
-        plt.grid(True)
-        plt.savefig(f'data/evaluation/short_squeeze_time_series.png', dpi=300)
+        df_counts.plot(label='Short Squeezes', alpha=0.8)
+        moving_average.plot(label='Média Móvel (7 dias)', linestyle='--', color='orange')
+
+        # Configurações do gráfico
+        plt.title('Count of Short Squeezes Over Time', fontsize=16)
+        plt.xlabel('DATE_REF', fontsize=14)
+        plt.ylabel('Count', fontsize=14)
+        plt.legend(fontsize=12)
+        plt.grid(True, linestyle='--', alpha=0.6)
+
+        # Criar o diretório caso não exista
+        os.makedirs('data/evaluation/', exist_ok=True)
+
+        # Salvar o gráfico no diretório especificado
+        plt.savefig('data/evaluation/short_squeeze_time_series.png', dpi=300)
         plt.close()
+
+        # Retornar os dados para auditoria, se necessário
+        return df_counts, moving_average
 
     def plot_n_trades(self, df):
-        # Group by 'DATE_REF' and count the number of 'log_returns'
-        df = df[df['y_pred_linear_regression'] > 0]
-        df_counts = df.groupby('DATE_REF')['y_pred_linear_regression'].count()
+        """
+        Plota o número de trades (n_trades) ao longo do tempo e inclui a média móvel do n_trades no gráfico.
 
-        # Plot the time series
+        Args:
+            df (pd.DataFrame): DataFrame contendo os dados com as colunas 'DATE_REF' e 'y_pred_linear_regression'.
+        """
+        # Filtrar apenas os registros com previsões positivas
+        df_filtered = df[df['y_pred_linear_regression'] > 0]
+
+        # Agrupar por 'DATE_REF' e contar o número de ocorrências de 'y_pred_linear_regression'
+        df_counts = df_filtered.groupby('DATE_REF')['y_pred_linear_regression'].count()
+
+        # Calcular a média móvel de 7 dias (ou outro período, se desejado)
+        moving_average = df_counts.rolling(window=7).mean()
+
+        # Plotar o gráfico do número de trades e da média móvel
         plt.figure(figsize=(12, 6))
-        df_counts.plot()
-        plt.title('Trade Signal Over Time')
-        plt.xlabel('DATE_REF')
-        plt.ylabel('Count')
-        plt.grid(True)
+        df_counts.plot(label='n_trades', alpha=0.8)
+        moving_average.plot(label='Média Móvel (7 dias)', linestyle='--', color='orange')
+
+        # Configurações do gráfico
+        plt.title('Trade Signal Over Time', fontsize=16)
+        plt.xlabel('DATE_REF', fontsize=14)
+        plt.ylabel('Count', fontsize=14)
+        plt.legend(fontsize=12)
+        plt.grid(True, linestyle='--', alpha=0.6)
+
+        # Criar o diretório caso não exista
         os.makedirs('data/backtest3/', exist_ok=True)
-        plt.savefig(f'data/backtest3/n_trades.png', dpi=300)
+
+        # Salvar o gráfico no diretório especificado
+        plt.savefig('data/backtest3/n_trades.png', dpi=300)
         plt.close()
 
+        # Retornar os dados para auditoria, se necessário
+        return df_counts, moving_average
+
     def plot_combined_counts(self, df):
+        """
+        Plota a contagem de Short Squeezes e Trade Signals ao longo do tempo,
+        destacando as médias móveis para ambas as séries no gráfico.
+
+        Args:
+            df (pd.DataFrame): DataFrame contendo as colunas 'DATE_REF', 'log_returns' e 'y_pred_linear_regression'.
+        """
         # Filtrar e agrupar para Short Squeezes
-        df_short_squeeze = df[df['log_returns'] > 0.1]
+        df_short_squeeze = df[df['log_returns'] > self.sett.FeatureEngineer.short_squeeze_threshold]
         counts_short_squeeze = df_short_squeeze.groupby('DATE_REF')['log_returns'].count()
 
         # Filtrar e agrupar para Trade Signals
         df_n_trades = df[df['y_pred_linear_regression'] > 0]
         counts_n_trades = df_n_trades.groupby('DATE_REF')['y_pred_linear_regression'].count()
 
+        # Calcular médias móveis (janela de 7 dias)
+        moving_avg_short_squeeze = counts_short_squeeze.rolling(window=7).mean()
+        moving_avg_n_trades = counts_n_trades.rolling(window=7).mean()
+
         # Criar figura
         plt.figure(figsize=(12, 6))
 
-        # Plotar ambas as séries no mesmo eixo
-        plt.plot(counts_short_squeeze.index, counts_short_squeeze.values, label='Short Squeezes', color='blue')
-        plt.plot(counts_n_trades.index, counts_n_trades.values, label='Trade Signals', color='green')
+        # Plotar contagens com transparência
+        plt.plot(counts_short_squeeze.index, counts_short_squeeze.values, label='Short Squeezes (Original)', alpha=0.2,
+                 color='blue')
+        plt.plot(counts_n_trades.index, counts_n_trades.values, label='Trade Signals (Original)', alpha=0.2,
+                 color='green')
 
-        # Adicionar títulos e legendas
-        plt.title('Contagem de Short Squeezes e Trade Signals ao Longo do Tempo')
-        plt.xlabel('DATE_REF')
-        plt.ylabel('Contagem')
-        plt.legend()
-        plt.grid(True)
+        # Plotar médias móveis com destaque
+        plt.plot(moving_avg_short_squeeze.index, moving_avg_short_squeeze.values, label='Média Móvel - Short Squeezes',
+                 linestyle='-', linewidth=2, color='darkblue')
+        plt.plot(moving_avg_n_trades.index, moving_avg_n_trades.values, label='Média Móvel - Trade Signals',
+                 linestyle='-', linewidth=2, color='darkgreen')
+
+        # Adicionar títulos, legendas e grade
+        plt.title('Contagem de Short Squeezes e Trade Signals ao Longo do Tempo', fontsize=16)
+        plt.xlabel('DATE_REF', fontsize=14)
+        plt.ylabel('Contagem', fontsize=14)
+        plt.legend(fontsize=12)
+        plt.grid(True, linestyle='--', alpha=0.6)
+
         # Ajustar layout e salvar figura
         plt.tight_layout()
         os.makedirs('data/backtest3/', exist_ok=True)
         plt.savefig('data/backtest3/n_trades_short_squeeze.png', dpi=300)
         plt.close()
+
+        # Retornar dados para auditoria, se necessário
+        return counts_short_squeeze, moving_avg_short_squeeze, counts_n_trades, moving_avg_n_trades
 
     def evaluate(self):
         """Run the full evaluation process."""
@@ -326,8 +389,7 @@ class Evaluator:
         self.plot_short_squeeze(all_predictions)
         self.plot_n_trades(all_predictions)
         self.plot_combined_counts(all_predictions)
-        all_predictions['log_returns'] = all_predictions['log_returns'].clip(
-            upper=np.max([all_predictions['log_returns'].quantile(0.99), 0.1]))
+        # all_predictions['log_returns'] = all_predictions['log_returns'].clip(upper=1)
         expected_return = all_predictions.loc[:, ['DATE_REF', 'y_pred_linear_regression', 'log_returns']].copy()
         self.compute_backtest3(expected_return)
 
@@ -365,7 +427,7 @@ class Evaluator:
         os.makedirs('data/backtest/', exist_ok=True)
         os.makedirs('data/backtest_cum/', exist_ok=True)
         for cost in [0.001]:
-            for date in [None, 'pre_2021', 'pos_2020']:
+            for date in [None]:
                 for model in models:
                     results[model] = pd.DataFrame(
                         index=['Daily Trades', 'Mean Return', 'Std Return', 'T-Stat',
@@ -387,9 +449,9 @@ class Evaluator:
 
                         if df_aux.empty:
                             continue
-                        unique_dates = df_aux['DATE_REF'].nunique()
+                        unique_dates = df.copy()['DATE_REF'].nunique()
                         results[model].loc['Daily Trades', str(thresh)] = len(df_aux) / len(set(df['DATE_REF']))
-                        results[model].loc['Mean Return', str(thresh)] = np.exp(df_aux.loc[:, 'log_returns']).mean() - 1 - cost
+                        results[model].loc['Mean Return', str(thresh)] = (np.exp(df_aux.loc[:, 'log_returns']) - 1 - cost).mean()
                         results[model].loc['Std Return', str(thresh)] = np.exp(df_aux['log_returns']).std()
                         results[model].loc['T-Stat', str(thresh)] = results[model].loc['Mean Return', str(thresh)] / \
                                                                     results[model].loc[
@@ -406,8 +468,8 @@ class Evaluator:
                         results[model].loc['P_75', str(thresh)] = np.percentile(df_aux['log_returns'], 75)
                         results[model].loc['P_90', str(thresh)] = np.percentile(df_aux['log_returns'], 90)
                         results[model].loc['P_95', str(thresh)] = np.percentile(df_aux['log_returns'], 95)
-                        results[model].loc['DailyCashProfit', str(thresh)] = np.sum((np.exp(
-                            df_aux.loc[:, 'log_returns']) - 1 - cost) * 0.01 * 3000000) / unique_dates
+                        results[model].loc['DailyCashProfit', str(thresh)] = np.sum(((np.exp(
+                            df_aux.loc[:, 'log_returns']) - 1 - cost) * 0.01 * 3000000)) / unique_dates
 
                         if date is None:
                             # Compute per-trade profit
@@ -512,7 +574,7 @@ class Evaluator:
         os.makedirs('data/backtest2/', exist_ok=True)
         os.makedirs('data/backtest2_cum/', exist_ok=True)
         for cost in [0.001]:
-            for date in [None, 'pre_2021', 'pos_2020']:
+            for date in [None]:
                 for model in models:
                     results[model] = pd.DataFrame(
                         index=['Daily Trades', 'Mean Return', 'Std Return', 'T-Stat',
@@ -542,9 +604,9 @@ class Evaluator:
                             continue
 
                         # Compute metrics
-                        unique_dates = df_aux['DATE_REF'].nunique()
+                        unique_dates = df.copy()['DATE_REF'].nunique()
                         results[model].loc['Daily Trades', str(top_N)] = len(df_aux) / unique_dates
-                        results[model].loc['Mean Return', str(top_N)] = np.exp(df_aux.loc[:, 'log_returns']).mean() - 1 - cost
+                        results[model].loc['Mean Return', str(top_N)] = (np.exp(df_aux.loc[:, 'log_returns']) - 1 - cost).mean()
                         results[model].loc['Std Return', str(top_N)] = np.exp(df_aux['log_returns']).std()
                         results[model].loc['T-Stat', str(top_N)] = (
                                 results[model].loc['Mean Return', str(top_N)]
@@ -564,8 +626,8 @@ class Evaluator:
                         results[model].loc['P_75', str(top_N)] = np.percentile(df_aux['log_returns'], 75)
                         results[model].loc['P_90', str(top_N)] = np.percentile(df_aux['log_returns'], 90)
                         results[model].loc['P_95', str(top_N)] = np.percentile(df_aux['log_returns'], 95)
-                        results[model].loc['DailyCashProfit', str(top_N)] = np.sum((np.exp(
-                            df_aux.loc[:, 'log_returns']) - 1 - cost) * 0.01 * 3000000) / unique_dates
+                        results[model].loc['DailyCashProfit', str(top_N)] = np.sum(((np.exp(
+                            df_aux.loc[:, 'log_returns']) - 1 - cost) * 0.01 * 3000000)) / unique_dates
 
                         if date is None:
                             # Compute per-trade profit
@@ -673,12 +735,15 @@ class Evaluator:
                 # Initialize results DataFrame outside the threshold loop
                 results[model] = pd.DataFrame(
                     index=['Daily Trades', 'Mean Return', 'Std Return', 'T-Stat',
-                           'Hit Ratio', 'Hit Above Cost',
-                           'P_05', 'P_10', 'P_25', 'P_50', 'P_75', 'P_90', 'P_95', 'DailyCashProfit']
+                           'Hit Ratio', 'Hit Above Cost', 'Kelly',
+                           'P_05', 'P_10', 'P_25', 'P_50', 'P_75', 'P_90', 'P_95',
+                           'DailyCashProfit', 'AUM', 'DailyMeanReturn']
                 )
                 # Dictionary to store cumulative profits for each threshold
+                info_2021 = {}
                 cumulative_profits = {}
                 cumulative_log_returns = {}
+                cumulative_log_returns_all_win = {}
                 for thresh in [-0.002, 0, 0.002]:
                     df_aux = df.copy()
                     df_aux = df_aux.loc[:, ['DATE_REF', 'log_returns', f'y_pred_{model}']]
@@ -688,9 +753,9 @@ class Evaluator:
                         continue
 
                     # Compute metrics
-                    unique_dates = df_aux['DATE_REF'].nunique()
+                    unique_dates = df.copy()['DATE_REF'].nunique()
                     results[model].loc['Daily Trades', str(thresh)] = len(df_aux) / unique_dates
-                    results[model].loc['Mean Return', str(thresh)] = np.exp(df_aux.loc[:, 'log_returns'].mean()) - 1 - cost
+                    results[model].loc['Mean Return', str(thresh)] = (np.exp(df_aux.loc[:, 'log_returns']) - 1 - cost).mean()
                     results[model].loc['Std Return', str(thresh)] = np.exp(df_aux['log_returns']).std()
                     results[model].loc['T-Stat', str(thresh)] = (
                             results[model].loc['Mean Return', str(thresh)]
@@ -703,6 +768,11 @@ class Evaluator:
                     results[model].loc['Hit Above Cost', str(thresh)] = (
                             (df_aux['log_returns'] > cost).sum() / len(df_aux)
                     )
+                    p = len(df_aux[df_aux['log_returns'] > 0]) / len(df_aux)
+                    q = 1-p
+                    rg = df_aux[np.exp(df_aux['log_returns']) - 1 > 0]['log_returns'].mean()
+                    rp = np.abs(df_aux[np.exp(df_aux['log_returns']) - 1 <= 0]['log_returns'].mean())
+                    results[model].loc['Kelly', str(thresh)] = p/rp-q/rg
                     results[model].loc['P_05', str(thresh)] = np.percentile(df_aux['log_returns'], 5)
                     results[model].loc['P_10', str(thresh)] = np.percentile(df_aux['log_returns'], 10)
                     results[model].loc['P_25', str(thresh)] = np.percentile(df_aux['log_returns'], 25)
@@ -710,8 +780,15 @@ class Evaluator:
                     results[model].loc['P_75', str(thresh)] = np.percentile(df_aux['log_returns'], 75)
                     results[model].loc['P_90', str(thresh)] = np.percentile(df_aux['log_returns'], 90)
                     results[model].loc['P_95', str(thresh)] = np.percentile(df_aux['log_returns'], 95)
-                    results[model].loc['DailyCashProfit', str(thresh)] = np.sum((np.exp(
-                        df_aux.loc[:, 'log_returns']) - 1 - cost) * 0.01 * 3000000) / unique_dates
+                    results[model].loc['DailyCashProfit', str(thresh)] = np.sum(((np.exp(
+                        df_aux.loc[:, 'log_returns']) - 1 - cost) * 0.01 * 3000000)) / unique_dates
+                    daily_trade_counts = df_aux.groupby('DATE_REF')['log_returns'].count()
+                    # Obter o número máximo de trades em um único dia
+                    max_daily_trades = daily_trade_counts.max()
+                    results[model].loc['AUM', str(thresh)] = 3000000 * 0.01 * max_daily_trades
+                    df_aux['returns'] = np.exp(df_aux['log_returns'])-1
+                    daily_return = df_aux.groupby('DATE_REF')['returns'].mean()
+                    results[model].loc['DailyMeanReturn', str(thresh)] = np.mean(daily_return)
 
                     # Compute per-trade profit
                     df_aux['profit'] = (np.exp(df_aux['log_returns']) - 1 - cost) * 0.01 * 3000000
@@ -723,11 +800,42 @@ class Evaluator:
                     # Store cumulative profit for this threshold
                     cumulative_profits[str(thresh)] = cumulative_profit
 
+                    # Dividing the capital by all the possible trades
                     df_aux['returns'] = np.exp(df_aux['log_returns'])-1
                     daily_return = df_aux.groupby('DATE_REF')['returns'].mean()
                     daily_log_return = np.log(daily_return+1)
                     cumulative_return = daily_log_return.cumsum()
-                    cumulative_log_returns[str(thresh)] = cumulative_return
+                    cumulative_log_returns_all_win[str(thresh)] = cumulative_return
+
+                    # Escolher o método de cálculo ('cummax' ou 'max')
+                    use_cummax = False  # Altere para False se quiser usar 'max' para todo o período
+                    # Apostando uma proporção do capital
+                    # Calcular o número de trades por dia
+                    daily_trade_counts = df_aux.groupby('DATE_REF')['returns'].count()
+                    if use_cummax:
+                        # Calcular o número máximo cumulativo de trades até cada dia
+                        trade_reference = daily_trade_counts.cummax()
+                    else:
+                        # Calcular o número máximo de trades em todo o período
+                        max_trades = daily_trade_counts.max()
+                        trade_reference = daily_trade_counts.apply(lambda x: max_trades)
+                    # Adicionar esta informação de volta ao DataFrame
+                    df_aux = df_aux.merge(trade_reference.rename('trade_reference'),
+                                          left_on='DATE_REF',
+                                          right_index=True)
+                    # Calcular o peso para cada trade com base no método escolhido
+                    df_aux['trade_weight'] = 1 / df_aux['trade_reference']
+                    # Ajustar os retornos ponderados por trade
+                    df_aux['weighted_returns'] = df_aux['returns'] * df_aux['trade_weight']
+                    # Calcular o retorno diário somando os retornos ponderados
+                    daily_weighted_return = df_aux.groupby('DATE_REF')['weighted_returns'].sum()
+                    # Calcular os log-retornos diários
+                    info_2021[str(thresh)] = daily_weighted_return[daily_weighted_return.index.year>2020].mean()/daily_weighted_return[daily_weighted_return.index.year>2020].std()*np.sqrt(252)
+                    daily_weighted_log_return = np.log(daily_weighted_return + 1)
+                    # Calcular o retorno acumulado
+                    cumulative_weighted_return = daily_weighted_log_return.cumsum()
+                    # Salvar os resultados em cumulative_log_returns
+                    cumulative_log_returns[str(thresh)] = cumulative_weighted_return
 
                 # After the threshold loop, format and round the results
                 if results[model].empty:
@@ -824,7 +932,7 @@ class Evaluator:
                     plt.figure(figsize=(12, 8))
                     for thresh_label in cumulative_log_returns_df.columns:
                         plt.plot(cumulative_log_returns_df.index, cumulative_log_returns_df[thresh_label],
-                                 label=f'Threshold {thresh_label}')
+                                 label=f'Threshold: {thresh_label}.  Info>2021: {np.round(info_2021[thresh_label],2)}')
                     plt.legend()
                     plt.title(f'Cumulative Log Return Over Time for {model} (cost {str(cost)})')
                     plt.xlabel('Date')
@@ -832,6 +940,30 @@ class Evaluator:
                     plt.grid(True)
                     plt.tight_layout()
                     plt.savefig(f'data/backtest3_cum/cumulative_log_return_{model}_{str(cost)}.png', dpi=300)
+                    plt.close()
+
+                if cumulative_log_returns_all_win:
+                    # Convert cumulative_profits dictionary to DataFrame
+                    cumulative_log_returns_all_win_df = pd.DataFrame(cumulative_log_returns_all_win)
+                    cumulative_log_returns_all_win_df = cumulative_log_returns_all_win_df.ffill()
+                    cumulative_log_returns_all_win_df = cumulative_log_returns_all_win_df.fillna(0)
+                    cumulative_log_returns_all_win_df.index = pd.to_datetime(cumulative_log_returns_all_win_df.index)
+
+                    # Sort the DataFrame by index (date)
+                    cumulative_log_returns_all_win_df = cumulative_log_returns_all_win_df.sort_index()
+
+                    # Plot cumulative profits
+                    plt.figure(figsize=(12, 8))
+                    for thresh_label in cumulative_log_returns_all_win_df.columns:
+                        plt.plot(cumulative_log_returns_all_win_df.index, cumulative_log_returns_all_win_df[thresh_label],
+                                 label=f'Threshold {thresh_label}')
+                    plt.legend()
+                    plt.title(f'Cumulative Log Return Over Time for {model} (cost {str(cost)})')
+                    plt.xlabel('Date')
+                    plt.ylabel('Cumulative Log Return')
+                    plt.grid(True)
+                    plt.tight_layout()
+                    plt.savefig(f'data/backtest3_cum/cumulative_log_return_all_win{model}_{str(cost)}.png', dpi=300)
                     plt.close()
 
     def plot_return_distribution(self, df):
